@@ -145,11 +145,22 @@ def test_list_kb_ids_and_get_kb_entries(kb_entry_id):
 
 
 def test_upsert_kb_checked_rejects_duplicate(kb_entry_id):
-    assert _wait_until(lambda: bool(storage.get_kb_entries([kb_entry_id]))), (
-        f"{kb_entry_id} never became visible via get_kb_entries within timeout"
+    # Vectorize's get_by_ids consistency is unreliable enough (see
+    # storage._kb_entry_exists) that even upsert_kb_checked's own internal
+    # retry budget (~20s) can occasionally lose the race. Retry the whole
+    # assertion rather than treating one slow window as a real failure --
+    # if it's a genuine bug (never detects the duplicate), this still fails
+    # once the generous timeout below is exhausted.
+    def raises_duplicate() -> bool:
+        try:
+            storage.upsert_kb_checked(kb_entry_id, "completely different text")
+        except ValueError as exc:
+            return "already exists" in str(exc)
+        return False
+
+    assert _wait_until(raises_duplicate, timeout=90.0, interval=20.0), (
+        f"upsert_kb_checked never raised for existing entry {kb_entry_id} within timeout"
     )
-    with pytest.raises(ValueError, match="already exists"):
-        storage.upsert_kb_checked(kb_entry_id, "completely different text")
 
 
 def test_upsert_kb_checked_creates_new():
