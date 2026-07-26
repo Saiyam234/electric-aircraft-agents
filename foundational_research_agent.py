@@ -155,7 +155,9 @@ async def research_topic(topic: str) -> dict:
     topic_tag = slugify(topic)
     options = ClaudeAgentOptions(
         mcp_servers={"storage": storage_server},
+        tools=["WebSearch"],  # only built-in tool this agent needs — no Bash/Read/Write/etc.
         allowed_tools=ALLOWED_TOOLS,
+        strict_mcp_config=True,  # ignore any user/project MCP config — only the server passed above
         system_prompt=(
             "You are the Foundational Research Agent from a multi-agent electric aircraft "
             "engineering project's Knowledge Base division. You must use real web search — "
