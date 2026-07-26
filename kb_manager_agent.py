@@ -133,6 +133,15 @@ Your tasks:
      duplicate, just close enough that a human should confirm they're both worth keeping
    - FALSE_POSITIVE: not actually related — the embedding similarity was a coincidence of
      phrasing/topic, the facts themselves are unrelated
+
+   NOTE on TRUE_DUPLICATE specifically: the write path (storage.upsert_kb_checked) already
+   rejects an upsert that reuses an existing entry_id, so a TRUE_DUPLICATE pair you find here
+   necessarily has two DIFFERENT entry_ids holding near-identical text. That's expected and
+   NOT a bug — it means the same fact got written twice under two different auto-generated
+   IDs (e.g. two separate research runs on related topics), which is exactly the case ID-based
+   dedup can't catch and this reconciliation pass exists for. Flag it normally; don't treat it
+   as evidence of a dedup-layer failure.
+
    Do not merge or recommend deleting anything — just classify each pair with a one-line
    reason.
 2. Report the citation validation results (pass through the numbers above, they're already
@@ -177,6 +186,7 @@ async def main():
     )
 
     cost = 0.0
+    run_id = storage.log_run_start("KBManager")
     async with ClaudeSDKClient(options=options) as client:
         await client.query(build_prompt(entries, candidate_pairs, citation_results))
         async for message in client.receive_response():
@@ -193,6 +203,7 @@ async def main():
             elif isinstance(message, ResultMessage):
                 cost = message.total_cost_usd or 0.0
                 print(f"\n--- turns={message.num_turns} cost=${cost:.4f} error={message.is_error} ---")
+                storage.log_run_end("KBManager", run_id, message.num_turns, cost)
                 if message.is_error:
                     print(message.result, file=sys.stderr)
 
