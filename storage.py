@@ -8,28 +8,93 @@ across the whole agent roster.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, TypedDict
 
 import requests
 from dotenv import load_dotenv
 
+from config import (
+    ASSURANCE_OFFICES,
+    CF_API_BASE,
+    EMBEDDING_MODEL,
+    GET_BY_IDS_MAX_BATCH,
+    MAX_BASELINE_CONFIG_BYTES,
+    MAX_REQUIREMENT_TEXT_LENGTH,
+    MAX_SIGNOFF_NOTES_LENGTH,
+    MIN_REQUIREMENT_TEXT_LENGTH,
+)
+
 load_dotenv()
 
-CF_API_BASE = "https://api.cloudflare.com/client/v4"
+logger = logging.getLogger(__name__)
+
 ACCOUNT_ID = os.environ["CLOUDFLARE_ACCOUNT_ID"]
 API_TOKEN = os.environ["CLOUDFLARE_API_TOKEN"]
 D1_DATABASE_ID = os.environ["CLOUDFLARE_D1_DATABASE_ID"]
 VECTORIZE_INDEX_NAME = os.environ["CLOUDFLARE_VECTORIZE_INDEX_NAME"]
 R2_BUCKET_NAME = os.environ.get("CLOUDFLARE_R2_BUCKET_NAME")
 
-EMBEDDING_MODEL = "@cf/baai/bge-base-en-v1.5"
-
 _HEADERS = {"Authorization": f"Bearer {API_TOKEN}"}
 
-ASSURANCE_OFFICES = {"review_critic", "safety_risk", "regulatory"}
+
+# ---------------------------------------------------------------------------
+# Return-shape types
+# ---------------------------------------------------------------------------
+
+class BaselineRow(TypedDict):
+    id: int
+    version: str
+    status: str
+    created_at: str
+
+
+class SignoffRow(TypedDict):
+    office: str
+    signed_off_at: str | None
+    notes: str
+
+
+class BaselineDetail(TypedDict):
+    id: int
+    version: str
+    status: str
+    config: dict
+    created_at: str
+    signoffs: list[SignoffRow]
+
+
+class AuditLogRow(TypedDict):
+    id: int
+    timestamp: str
+    agent: str
+    event_type: str
+    description: str
+    related_baseline_id: int | None
+    related_requirement_id: int | None
+
+
+class KBMetadata(TypedDict, total=False):
+    text: str
+    topic: str
+    source_url: str
+    source_title: str
+
+
+class KBSearchMatch(TypedDict):
+    id: str
+    score: float
+    metadata: KBMetadata
+
+
+class KBEntry(TypedDict):
+    id: str
+    namespace: str | None
+    metadata: KBMetadata
+    values: list[float]
 
 
 def _now() -> str:
@@ -49,22 +114,41 @@ def _request(method: str, url: str, max_retries: int = 3, **kwargs) -> requests.
 
     Client errors (4xx other than 429) are not retried — those indicate a bad
     request, not a transient failure, and retrying would just fail the same way.
+
+    Only method/URL/status/attempt number are ever logged — never headers or
+    body, so the bearer token and any request/response payloads never end up
+    in logs.
     """
     last_exc: Exception | None = None
     resp: requests.Response | None = None
-    for attempt in range(max_retries):
+    for attempt in range(1, max_retries + 1):
+        logger.debug("Request attempt %d/%d: %s %s", attempt, max_retries, method, url)
         try:
             resp = requests.request(method, url, timeout=30, **kwargs)
         except requests.exceptions.RequestException as exc:
             last_exc = exc
-            time.sleep(2**attempt)
+            backoff = 2 ** (attempt - 1)
+            logger.warning(
+                "Attempt %d/%d network error for %s %s: %s — retrying in %ds",
+                attempt, max_retries, method, url, exc, backoff,
+            )
+            time.sleep(backoff)
             continue
         if resp.status_code == 429 or resp.status_code >= 500:
-            time.sleep(2**attempt)
+            backoff = 2 ** (attempt - 1)
+            logger.warning(
+                "Attempt %d/%d got status %d for %s %s — retrying in %ds",
+                attempt, max_retries, resp.status_code, method, url, backoff,
+            )
+            time.sleep(backoff)
             continue
         return resp
     if resp is not None:
+        logger.error(
+            "All %d attempts exhausted for %s %s, last status %d", max_retries, method, url, resp.status_code
+        )
         return resp
+    logger.error("All %d attempts failed for %s %s: %s", max_retries, method, url, last_exc)
     raise CloudflareAPIError(f"Request to {url} failed after {max_retries} attempts: {last_exc}")
 
 
@@ -78,6 +162,7 @@ def _d1_query(sql: str, params: list[Any] | None = None) -> list[dict]:
     resp.raise_for_status()
     data = resp.json()
     if not data["success"]:
+        logger.error("D1 query failed: %s", data["errors"])
         raise CloudflareAPIError(f"D1 query failed: {data['errors']}")
     return data["result"][0]["results"]
 
@@ -125,15 +210,22 @@ def init_db() -> None:
 
 
 def create_baseline(config: dict, version: str | None = None) -> int:
+    if not isinstance(config, dict):
+        raise TypeError(f"config must be a dict, got {type(config).__name__}")
+    serialized = json.dumps(config)
+    size = len(serialized.encode("utf-8"))
+    if size > MAX_BASELINE_CONFIG_BYTES:
+        raise ValueError(f"config is {size} bytes, exceeds the {MAX_BASELINE_CONFIG_BYTES}-byte limit")
+
     version = version or f"v{int(time.time())}"
     _d1_query(
         "INSERT INTO baselines (version, status, config, created_at) VALUES (?, ?, ?, ?)",
-        [version, "draft", json.dumps(config), _now()],
+        [version, "draft", serialized, _now()],
     )
     return _d1_query("SELECT id FROM baselines WHERE version = ?", [version])[0]["id"]
 
 
-def list_baselines(limit: int = 50) -> list[dict]:
+def list_baselines(limit: int = 50) -> list[BaselineRow]:
     """Lightweight listing (no config blob) for project-state tracking/reporting."""
     return _d1_query(
         "SELECT id, version, status, created_at FROM baselines ORDER BY created_at DESC LIMIT ?",
@@ -141,7 +233,7 @@ def list_baselines(limit: int = 50) -> list[dict]:
     )
 
 
-def get_baseline(baseline_id: int) -> dict:
+def get_baseline(baseline_id: int) -> BaselineDetail:
     rows = _d1_query("SELECT * FROM baselines WHERE id = ?", [baseline_id])
     if not rows:
         raise ValueError(f"No baseline with id {baseline_id}")
@@ -157,6 +249,8 @@ def get_baseline(baseline_id: int) -> dict:
 def record_signoff(baseline_id: int, office: str, notes: str = "") -> None:
     if office not in ASSURANCE_OFFICES:
         raise ValueError(f"office must be one of {ASSURANCE_OFFICES}, got {office!r}")
+    if len(notes) > MAX_SIGNOFF_NOTES_LENGTH:
+        raise ValueError(f"notes must be at most {MAX_SIGNOFF_NOTES_LENGTH} chars, got {len(notes)}")
     _d1_query(
         """
         INSERT INTO baseline_signoffs (baseline_id, office, signed_off_at, notes)
@@ -178,6 +272,10 @@ def is_baseline_stamped(baseline_id: int) -> bool:
 
 
 def add_requirement(text: str, baseline_id: int | None = None, impact_assessment: str | None = None) -> int:
+    if not (MIN_REQUIREMENT_TEXT_LENGTH <= len(text) <= MAX_REQUIREMENT_TEXT_LENGTH):
+        raise ValueError(
+            f"text must be {MIN_REQUIREMENT_TEXT_LENGTH}-{MAX_REQUIREMENT_TEXT_LENGTH} chars, got {len(text)}"
+        )
     now = _now()
     _d1_query(
         """
@@ -212,7 +310,7 @@ def log_event(
     )
 
 
-def get_audit_log(limit: int = 50) -> list[dict]:
+def get_audit_log(limit: int = 50) -> list[AuditLogRow]:
     return _d1_query("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", [limit])
 
 
@@ -226,6 +324,7 @@ def _embed(texts: list[str]) -> list[list[float]]:
     resp.raise_for_status()
     data = resp.json()
     if not data["success"]:
+        logger.error("Workers AI embedding failed: %s", data["errors"])
         raise CloudflareAPIError(f"Workers AI embedding failed: {data['errors']}")
     return data["result"]["data"]
 
@@ -238,16 +337,18 @@ def upsert_kb(entry_id: str, text: str, metadata: dict | None = None) -> None:
     resp.raise_for_status()
     data = resp.json()
     if not data["success"]:
+        logger.error("Vectorize upsert failed: %s", data["errors"])
         raise CloudflareAPIError(f"Vectorize upsert failed: {data['errors']}")
 
 
-def search_kb(query: str, top_k: int = 5) -> list[dict]:
+def search_kb(query: str, top_k: int = 5) -> list[KBSearchMatch]:
     vector = _embed([query])[0]
     url = f"{CF_API_BASE}/accounts/{ACCOUNT_ID}/vectorize/v2/indexes/{VECTORIZE_INDEX_NAME}/query"
     resp = _request("POST", url, headers=_HEADERS, json={"vector": vector, "topK": top_k, "returnMetadata": "all"})
     resp.raise_for_status()
     data = resp.json()
     if not data["success"]:
+        logger.error("Vectorize query failed: %s", data["errors"])
         raise CloudflareAPIError(f"Vectorize query failed: {data['errors']}")
     return data["result"]["matches"]
 
@@ -271,6 +372,7 @@ def list_kb_ids(limit: int = 1000) -> list[str]:
         resp.raise_for_status()
         data = resp.json()
         if not data["success"]:
+            logger.error("Vectorize list failed: %s", data["errors"])
             raise CloudflareAPIError(f"Vectorize list failed: {data['errors']}")
         result = data["result"]
         ids.extend(v["id"] for v in result["vectors"])
@@ -280,22 +382,20 @@ def list_kb_ids(limit: int = 1000) -> list[str]:
     return ids[:limit]
 
 
-_GET_BY_IDS_MAX_BATCH = 20  # Cloudflare API limit (error code 40007 above this)
-
-
-def get_kb_entries(ids: list[str]) -> list[dict]:
+def get_kb_entries(ids: list[str]) -> list[KBEntry]:
     """Fetches full vector data (metadata + embedding values) for any number of IDs.
 
     Batches internally since Vectorize's get_by_ids caps at 20 IDs per call.
     """
     url = f"{CF_API_BASE}/accounts/{ACCOUNT_ID}/vectorize/v2/indexes/{VECTORIZE_INDEX_NAME}/get_by_ids"
-    entries: list[dict] = []
-    for i in range(0, len(ids), _GET_BY_IDS_MAX_BATCH):
-        batch = ids[i : i + _GET_BY_IDS_MAX_BATCH]
+    entries: list[KBEntry] = []
+    for i in range(0, len(ids), GET_BY_IDS_MAX_BATCH):
+        batch = ids[i : i + GET_BY_IDS_MAX_BATCH]
         resp = _request("POST", url, headers=_HEADERS, json={"ids": batch})
         resp.raise_for_status()
         data = resp.json()
         if not data["success"]:
+            logger.error("Vectorize get_by_ids failed: %s", data["errors"])
             raise CloudflareAPIError(f"Vectorize get_by_ids failed: {data['errors']}")
         entries.extend(data["result"])
     return entries
@@ -312,6 +412,7 @@ def delete_kb_entries(ids: list[str]) -> None:
     resp.raise_for_status()
     data = resp.json()
     if not data["success"]:
+        logger.error("Vectorize delete_by_ids failed: %s", data["errors"])
         raise CloudflareAPIError(f"Vectorize delete_by_ids failed: {data['errors']}")
 
 
@@ -324,7 +425,7 @@ def upload_file(key: str, data: bytes, content_type: str = "application/octet-st
         raise R2NotEnabledError("CLOUDFLARE_R2_BUCKET_NAME not set")
     url = f"{CF_API_BASE}/accounts/{ACCOUNT_ID}/r2/buckets/{R2_BUCKET_NAME}/objects/{key}"
     resp = _request("PUT", url, headers={**_HEADERS, "Content-Type": content_type}, data=data)
-    if resp.status_code == 400 and "10042" in resp.text:
+    if "10042" in resp.text:
         raise R2NotEnabledError("R2 is not enabled on this account yet")
     resp.raise_for_status()
 
@@ -334,7 +435,7 @@ def get_file(key: str) -> bytes:
         raise R2NotEnabledError("CLOUDFLARE_R2_BUCKET_NAME not set")
     url = f"{CF_API_BASE}/accounts/{ACCOUNT_ID}/r2/buckets/{R2_BUCKET_NAME}/objects/{key}"
     resp = _request("GET", url, headers=_HEADERS)
-    if resp.status_code == 400 and "10042" in resp.text:
+    if "10042" in resp.text:
         raise R2NotEnabledError("R2 is not enabled on this account yet")
     resp.raise_for_status()
     return resp.content
