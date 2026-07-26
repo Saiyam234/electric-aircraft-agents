@@ -244,6 +244,49 @@ def search_kb(query: str, top_k: int = 5) -> list[dict]:
     return data["result"]["matches"]
 
 
+def list_kb_ids(limit: int = 1000) -> list[str]:
+    """Paginates through every vector ID currently in the KB index."""
+    ids: list[str] = []
+    cursor = None
+    url = f"{CF_API_BASE}/accounts/{ACCOUNT_ID}/vectorize/v2/indexes/{VECTORIZE_INDEX_NAME}/list"
+    while len(ids) < limit:
+        params = {"count": min(100, limit - len(ids))}
+        if cursor:
+            params["cursor"] = cursor
+        resp = _request("GET", url, headers=_HEADERS, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        if not data["success"]:
+            raise CloudflareAPIError(f"Vectorize list failed: {data['errors']}")
+        result = data["result"]
+        ids.extend(v["id"] for v in result["vectors"])
+        cursor = result.get("nextCursor")
+        if not result.get("isTruncated") or not cursor:
+            break
+    return ids[:limit]
+
+
+_GET_BY_IDS_MAX_BATCH = 20  # Cloudflare API limit (error code 40007 above this)
+
+
+def get_kb_entries(ids: list[str]) -> list[dict]:
+    """Fetches full vector data (metadata + embedding values) for any number of IDs.
+
+    Batches internally since Vectorize's get_by_ids caps at 20 IDs per call.
+    """
+    url = f"{CF_API_BASE}/accounts/{ACCOUNT_ID}/vectorize/v2/indexes/{VECTORIZE_INDEX_NAME}/get_by_ids"
+    entries: list[dict] = []
+    for i in range(0, len(ids), _GET_BY_IDS_MAX_BATCH):
+        batch = ids[i : i + _GET_BY_IDS_MAX_BATCH]
+        resp = _request("POST", url, headers=_HEADERS, json={"ids": batch})
+        resp.raise_for_status()
+        data = resp.json()
+        if not data["success"]:
+            raise CloudflareAPIError(f"Vectorize get_by_ids failed: {data['errors']}")
+        entries.extend(data["result"])
+    return entries
+
+
 # ---------------------------------------------------------------------------
 # R2 (files) — not usable until the R2 subscription is enabled on the account
 # ---------------------------------------------------------------------------
