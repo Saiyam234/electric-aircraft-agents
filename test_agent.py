@@ -132,6 +132,7 @@ async def main():
         permission_mode="bypassPermissions",
     )
 
+    run_id = storage.log_run_start("TestAgent")
     async with ClaudeSDKClient(options=options) as client:
         await client.query(PROMPT)
         async for message in client.receive_response():
@@ -147,6 +148,7 @@ async def main():
                         print(f"  [result]  {block.content}")
             elif isinstance(message, ResultMessage):
                 print(f"\n--- turns={message.num_turns} cost=${message.total_cost_usd:.4f} error={message.is_error} ---")
+                storage.log_run_end("TestAgent", run_id, message.num_turns, message.total_cost_usd or 0.0)
 
 
 if __name__ == "__main__":
