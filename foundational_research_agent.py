@@ -2,9 +2,16 @@
 
 Proactively builds the reference library using REAL web search — not
 synthesis from the model's own training knowledge. Each distinct fact found
-gets its own knowledge-base entry (via storage.upsert_kb) tagged with topic
-and source metadata, so it stays precise and individually searchable later.
-One research event is logged via storage.log_event per topic when done.
+gets its own knowledge-base entry (via storage.upsert_kb_checked) tagged
+with topic and source metadata, so it stays precise and individually
+searchable later. One research event is logged via storage.log_event per
+topic when done.
+
+Exact duplicates (re-running the same topic and regenerating the same
+descriptive entry_id) are rejected at write time by upsert_kb_checked and
+logged as duplicate_detected events rather than silently overwritten —
+see README.md's Deduplication strategy section. Near-duplicates under a
+different entry_id aren't caught here; that's KB Manager's job.
 
 Usage:
     python3 foundational_research_agent.py --topic "structural materials"
@@ -66,16 +73,21 @@ def slugify(text: str) -> str:
     },
 )
 async def upsert_kb_tool(args):
-    storage.upsert_kb(
-        args["entry_id"],
-        args["text"],
-        metadata={
-            "topic": args["topic"],
-            "source_url": args["source_url"],
-            "source_title": args["source_title"],
-        },
-    )
-    return {"content": [{"type": "text", "text": f"Stored KB entry id={args['entry_id']}"}]}
+    try:
+        storage.upsert_kb_checked(
+            args["entry_id"],
+            args["text"],
+            metadata={
+                "topic": args["topic"],
+                "source_url": args["source_url"],
+                "source_title": args["source_title"],
+            },
+        )
+        return {"content": [{"type": "text", "text": f"Stored KB entry id={args['entry_id']}"}]}
+    except ValueError as exc:
+        # Duplicate entry_id — log it and tell the agent to move on rather than crash.
+        storage.log_event("FoundationalResearchAgent", "duplicate_detected", f"entry_id={args['entry_id']}: {exc}")
+        return {"content": [{"type": "text", "text": f"[SKIP] entry_id={args['entry_id']} already exists — duplicate rejected"}]}
 
 
 @tool("log_event", "Log a research event to the audit log", {"event_type": str, "description": str})
@@ -167,9 +179,10 @@ async def research_topic(topic: str) -> dict:
         permission_mode="bypassPermissions",
     )
 
-    stats = {"cost": 0.0, "entries_created": 0, "turns": 0}
+    stats = {"cost": 0.0, "entries_created": 0, "entries_skipped": 0, "turns": 0}
     approx_turns = 0
     warned_long_run = False
+    run_id = storage.log_run_start("FoundationalResearchAgent")
     async with ClaudeSDKClient(options=options) as client:
         await client.query(build_prompt(topic, topic_tag))
         async for message in client.receive_response():
@@ -188,12 +201,14 @@ async def research_topic(topic: str) -> dict:
                         print(block.text)
                     elif isinstance(block, ToolUseBlock):
                         print(f"  [calling] {block.name}({block.input})")
-                        if block.name == "mcp__storage__upsert_kb":
-                            stats["entries_created"] += 1
             elif isinstance(message, UserMessage):
                 for block in message.content:
                     if isinstance(block, ToolResultBlock):
                         text = str(block.content)
+                        if "[SKIP]" in text and "already exists" in text:
+                            stats["entries_skipped"] += 1
+                        elif "Stored KB entry" in text:
+                            stats["entries_created"] += 1
                         if len(text) > 800:
                             text = text[:800] + " ...[truncated]"
                         print(f"  [result]  {text}")
@@ -204,6 +219,7 @@ async def research_topic(topic: str) -> dict:
                     f"\n--- topic={topic!r} turns={message.num_turns} "
                     f"cost=${stats['cost']:.4f} error={message.is_error} ---"
                 )
+                storage.log_run_end("FoundationalResearchAgent", run_id, message.num_turns, stats["cost"])
                 if message.is_error:
                     raise RuntimeError(f"agent run for topic {topic!r} errored: {message.result}")
     return stats
@@ -224,7 +240,15 @@ async def research_topic_with_retry(topic: str, retries: int = 1) -> dict:
         except Exception as exc:  # noqa: BLE001 — deliberately broad: any failure should be retried/reported, not crash the batch
             last_error = exc
             print(f"  [!] topic {topic!r} attempt {attempt + 1} failed: {exc}", file=sys.stderr)
-    return {"topic": topic, "status": "failed", "cost": 0.0, "entries_created": 0, "turns": 0, "error": str(last_error)}
+    return {
+        "topic": topic,
+        "status": "failed",
+        "cost": 0.0,
+        "entries_created": 0,
+        "entries_skipped": 0,
+        "turns": 0,
+        "error": str(last_error),
+    }
 
 
 async def main():
@@ -250,13 +274,15 @@ async def main():
 
     total_cost = sum(r["cost"] for r in results)
     total_entries = sum(r["entries_created"] for r in results)
+    total_skipped = sum(r.get("entries_skipped", 0) for r in results)
     failed = [r for r in results if r["status"] == "failed"]
 
     print(f"\n===== SUMMARY — {len(topics)} topic(s) =====")
     for r in results:
         status_line = "OK" if r["status"] == "ok" else f"FAILED ({r.get('error')})"
-        print(f"  - {r['topic']}: {status_line}, entries={r['entries_created']}, cost=${r['cost']:.4f}")
-    print(f"Total: {total_entries} entries created, ${total_cost:.4f} spent, {len(failed)} topic(s) failed")
+        skipped_str = f", skipped={r['entries_skipped']}" if r.get("entries_skipped") else ""
+        print(f"  - {r['topic']}: {status_line}, created={r['entries_created']}{skipped_str}, cost=${r['cost']:.4f}")
+    print(f"Total: {total_entries} created, {total_skipped} skipped, ${total_cost:.4f} spent, {len(failed)} topic(s) failed")
 
 
 if __name__ == "__main__":
