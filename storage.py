@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import Any, TypedDict
 
@@ -314,6 +315,18 @@ def get_audit_log(limit: int = 50) -> list[AuditLogRow]:
     return _d1_query("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", [limit])
 
 
+def log_run_start(agent: str) -> str:
+    """Logs the start of one agent run and returns a run_id to pass to
+    log_run_end, so the run is traceable end-to-end in audit_log."""
+    run_id = str(uuid.uuid4())
+    log_event(agent, "agent_start", f"run_id={run_id}")
+    return run_id
+
+
+def log_run_end(agent: str, run_id: str, turns: int, cost: float) -> None:
+    log_event(agent, "agent_end", f"run_id={run_id} turns={turns} cost=${cost:.4f}")
+
+
 # ---------------------------------------------------------------------------
 # Vectorize + Workers AI (semantic search over the knowledge base)
 # ---------------------------------------------------------------------------
@@ -339,6 +352,40 @@ def upsert_kb(entry_id: str, text: str, metadata: dict | None = None) -> None:
     if not data["success"]:
         logger.error("Vectorize upsert failed: %s", data["errors"])
         raise CloudflareAPIError(f"Vectorize upsert failed: {data['errors']}")
+
+
+def upsert_kb_checked(entry_id: str, text: str, metadata: dict | None = None) -> dict:
+    """Upsert a KB entry, but reject if entry_id already exists.
+
+    Guards against the realistic re-run case: running the same research
+    topic again, where the agent naturally regenerates the same descriptive
+    slug for the same fact — this would otherwise silently overwrite via
+    Vectorize's normal upsert semantics. Does NOT catch near-duplicates
+    under different IDs (same fact, different wording/slug) — that's KB
+    Manager's job (semantic similarity via cosine distance, human-reviewed,
+    never auto-merged).
+
+    Relies on get_kb_entries(), which returns [] for an ID that plainly
+    doesn't exist (verified — no exception to handle). Vectorize's read
+    endpoints are eventually consistent, so an entry inserted moments ago
+    in the SAME run may not be visible yet; not a concern for the realistic
+    use case this guards (separate runs, minutes/days apart).
+
+    Returns:
+        {"status": "created", "entry_id": entry_id}
+
+    Raises:
+        ValueError: if entry_id already exists
+    """
+    existing = get_kb_entries([entry_id])
+    if existing:
+        existing_text = existing[0]["metadata"].get("text", "")
+        raise ValueError(
+            f"KB entry {entry_id!r} already exists — refusing duplicate. "
+            f"Existing text: {existing_text[:100]!r}"
+        )
+    upsert_kb(entry_id, text, metadata)
+    return {"status": "created", "entry_id": entry_id}
 
 
 def search_kb(query: str, top_k: int = 5) -> list[KBSearchMatch]:
@@ -420,14 +467,40 @@ def delete_kb_entries(ids: list[str]) -> None:
 # R2 (files) — not usable until the R2 subscription is enabled on the account
 # ---------------------------------------------------------------------------
 
+R2_NOT_ENABLED_ERROR_CODE = 10042
+
+
+def _cf_error_codes(resp: requests.Response) -> set[int]:
+    """Extracts Cloudflare API error codes from a response body, if any.
+
+    Returns an empty set if the body isn't JSON or has no errors — never
+    raises, so callers can safely check membership either way.
+    """
+    try:
+        body = resp.json()
+    except ValueError:
+        return set()
+    return {e.get("code") for e in body.get("errors", []) if isinstance(e, dict)}
+
+
+def _raise_for_r2_response(resp: requests.Response) -> None:
+    """Raises R2NotEnabledError specifically for error code 10042 (seen as
+    both HTTP 400 from the bucket-management API and 403 from the
+    object-level API — the status code isn't a reliable signal, the error
+    code is). Any other error (bad bucket name, permission issue, etc.)
+    falls through to raise_for_status() with the real underlying message.
+    """
+    if R2_NOT_ENABLED_ERROR_CODE in _cf_error_codes(resp):
+        raise R2NotEnabledError("R2 is not enabled on this account yet")
+    resp.raise_for_status()
+
+
 def upload_file(key: str, data: bytes, content_type: str = "application/octet-stream") -> None:
     if not R2_BUCKET_NAME:
         raise R2NotEnabledError("CLOUDFLARE_R2_BUCKET_NAME not set")
     url = f"{CF_API_BASE}/accounts/{ACCOUNT_ID}/r2/buckets/{R2_BUCKET_NAME}/objects/{key}"
     resp = _request("PUT", url, headers={**_HEADERS, "Content-Type": content_type}, data=data)
-    if "10042" in resp.text:
-        raise R2NotEnabledError("R2 is not enabled on this account yet")
-    resp.raise_for_status()
+    _raise_for_r2_response(resp)
 
 
 def get_file(key: str) -> bytes:
@@ -435,7 +508,5 @@ def get_file(key: str) -> bytes:
         raise R2NotEnabledError("CLOUDFLARE_R2_BUCKET_NAME not set")
     url = f"{CF_API_BASE}/accounts/{ACCOUNT_ID}/r2/buckets/{R2_BUCKET_NAME}/objects/{key}"
     resp = _request("GET", url, headers=_HEADERS)
-    if "10042" in resp.text:
-        raise R2NotEnabledError("R2 is not enabled on this account yet")
-    resp.raise_for_status()
+    _raise_for_r2_response(resp)
     return resp.content
