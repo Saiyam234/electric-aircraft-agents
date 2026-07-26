@@ -57,6 +57,20 @@ Every agent script prints real-time tool calls/results as it runs, and a
 final `cost=$X.XX` line — these hit real Cloudflare + Anthropic APIs, not
 mocks, so every run has a real (small) dollar cost.
 
+### What to expect per agent
+
+Based on actual runs, not estimates:
+
+| Agent | Typical cost | Typical turns | What it produces |
+|---|---|---|---|
+| `test_agent.py` | ~$0.15 | ~10 | Confirms storage.py's core functions (baselines, sign-offs, KB) work when driven by a real agent |
+| `foundational_research_agent.py` | $0.75–$1.50 per topic (scales with topic breadth) | 19–31 | 10–20 cited KB entries per topic, each a specific fact with a real source URL |
+| `kb_manager_agent.py` | ~$0.15–$0.21 | 2–6 | A reconciliation report: candidate duplicate/overlap pairs classified, citation pass/fail counts |
+| `orchestrator_agent.py` | ~$0.12 | 6 | A directive decomposition, a batched decision request, a real milestone digest, and (if triggered) an immediate escalation |
+
+Every run is also traceable in `audit_log` via `agent_start`/`agent_end`
+events tagged with a `run_id` (see `storage.log_run_start`/`log_run_end`).
+
 ## Adding a new agent
 
 1. `git checkout main && git pull`
@@ -80,3 +94,29 @@ This is separate from agent testing above — agents are validated by running
 them for real and checking outcomes, not unit tests, since their correctness
 is about judgment quality (is this a good research fact? is this really a
 duplicate?), not deterministic function behavior.
+
+R2 isn't enabled on the account yet (needs a card on file for the free
+tier), so there are no R2-specific tests — `verify_setup.py` checks it
+non-blockingly (`[SKIP]`, not `[FAIL]`) and `storage.py`'s R2 functions
+raise a clear `R2NotEnabledError` until then.
+
+## Deduplication strategy
+
+**Exact duplicates** (same `entry_id`) are rejected at write time by
+`storage.upsert_kb_checked()` — it checks whether the ID already exists
+before upserting and raises `ValueError` instead of silently overwriting.
+This guards the realistic case: re-running the same research topic, where
+the agent naturally regenerates the same descriptive slug for the same
+fact. `foundational_research_agent.py` catches that `ValueError`, logs a
+`duplicate_detected` audit event, skips the entry, and continues rather
+than crashing — the final summary reports both `entries_created` and
+`entries_skipped`.
+
+**Near-duplicates** (same underlying fact, different wording or a
+different `entry_id`) are *not* caught by the check above — that's KB
+Manager's job: cosine similarity between embeddings surfaces candidate
+pairs, which get human-reviewed judgment (`TRUE_DUPLICATE` / `OVERLAP` /
+`FALSE_POSITIVE`), never auto-merged or auto-deleted. If KB Manager ever
+sees near-identical text under different IDs from the *same* topic run,
+that indicates a bug in the write-time check above, not just an
+expected overlap — its prompt flags that case explicitly.
