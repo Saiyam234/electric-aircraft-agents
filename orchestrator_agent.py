@@ -187,6 +187,7 @@ async def main():
     )
 
     cost = 0.0
+    run_id = storage.log_run_start("Orchestrator")
     async with ClaudeSDKClient(options=options) as client:
         await client.query(PROMPT)
         async for message in client.receive_response():
@@ -206,6 +207,7 @@ async def main():
             elif isinstance(message, ResultMessage):
                 cost = message.total_cost_usd or 0.0
                 print(f"\n--- turns={message.num_turns} cost=${cost:.4f} error={message.is_error} ---")
+                storage.log_run_end("Orchestrator", run_id, message.num_turns, cost)
                 if message.is_error:
                     print(message.result, file=sys.stderr)
 
