@@ -61,6 +61,32 @@ def test_list_baselines_includes_new_one(baseline_id):
     assert baseline["version"] in versions
 
 
+def test_create_baseline_rejects_non_dict_config():
+    with pytest.raises(TypeError):
+        storage.create_baseline(["not", "a", "dict"], version=_unique("baseline"))
+
+
+def test_create_baseline_rejects_oversized_config():
+    huge_config = {"blob": "x" * (storage.MAX_BASELINE_CONFIG_BYTES + 1)}
+    with pytest.raises(ValueError):
+        storage.create_baseline(huge_config, version=_unique("baseline"))
+
+
+def test_add_requirement_rejects_empty_text(baseline_id):
+    with pytest.raises(ValueError):
+        storage.add_requirement("", baseline_id=baseline_id)
+
+
+def test_add_requirement_rejects_oversized_text(baseline_id):
+    with pytest.raises(ValueError):
+        storage.add_requirement("x" * (storage.MAX_REQUIREMENT_TEXT_LENGTH + 1), baseline_id=baseline_id)
+
+
+def test_record_signoff_rejects_oversized_notes(baseline_id):
+    with pytest.raises(ValueError):
+        storage.record_signoff(baseline_id, "review_critic", notes="x" * (storage.MAX_SIGNOFF_NOTES_LENGTH + 1))
+
+
 def test_signoff_stamping_requires_all_three_offices(baseline_id):
     assert storage.is_baseline_stamped(baseline_id) is False
     storage.record_signoff(baseline_id, "review_critic")
