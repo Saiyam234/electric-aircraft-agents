@@ -142,3 +142,19 @@ def test_list_kb_ids_and_get_kb_entries(kb_entry_id):
     entries = storage.get_kb_entries([kb_entry_id])
     assert len(entries) == 1
     assert entries[0]["metadata"]["topic"] == "pytest"
+
+
+def test_upsert_kb_checked_rejects_duplicate(kb_entry_id):
+    assert _wait_until(lambda: bool(storage.get_kb_entries([kb_entry_id]))), (
+        f"{kb_entry_id} never became visible via get_kb_entries within timeout"
+    )
+    with pytest.raises(ValueError, match="already exists"):
+        storage.upsert_kb_checked(kb_entry_id, "completely different text")
+
+
+def test_upsert_kb_checked_creates_new():
+    entry_id = _unique("kb-checked")
+    result = storage.upsert_kb_checked(entry_id, "pytest fact for checked upsert", {"topic": "pytest"})
+    assert result == {"status": "created", "entry_id": entry_id}
+    assert _wait_until(lambda: entry_id in storage.list_kb_ids()), f"{entry_id} not found after upsert"
+    storage.delete_kb_entries([entry_id])
