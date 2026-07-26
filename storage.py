@@ -133,6 +133,14 @@ def create_baseline(config: dict, version: str | None = None) -> int:
     return _d1_query("SELECT id FROM baselines WHERE version = ?", [version])[0]["id"]
 
 
+def list_baselines(limit: int = 50) -> list[dict]:
+    """Lightweight listing (no config blob) for project-state tracking/reporting."""
+    return _d1_query(
+        "SELECT id, version, status, created_at FROM baselines ORDER BY created_at DESC LIMIT ?",
+        [limit],
+    )
+
+
 def get_baseline(baseline_id: int) -> dict:
     rows = _d1_query("SELECT * FROM baselines WHERE id = ?", [baseline_id])
     if not rows:
@@ -245,7 +253,13 @@ def search_kb(query: str, top_k: int = 5) -> list[dict]:
 
 
 def list_kb_ids(limit: int = 1000) -> list[str]:
-    """Paginates through every vector ID currently in the KB index."""
+    """Paginates through every vector ID currently in the KB index.
+
+    Vectorize is eventually consistent, and this endpoint lags further behind
+    a fresh upsert than search_kb does (~20s+ observed vs. ~15s for search_kb) —
+    don't upsert_kb and immediately list_kb_ids in the same run expecting to
+    see it; search_kb catches up faster if that's all you need.
+    """
     ids: list[str] = []
     cursor = None
     url = f"{CF_API_BASE}/accounts/{ACCOUNT_ID}/vectorize/v2/indexes/{VECTORIZE_INDEX_NAME}/list"
@@ -285,6 +299,20 @@ def get_kb_entries(ids: list[str]) -> list[dict]:
             raise CloudflareAPIError(f"Vectorize get_by_ids failed: {data['errors']}")
         entries.extend(data["result"])
     return entries
+
+
+def delete_kb_entries(ids: list[str]) -> None:
+    """Deletes vectors by ID. Vectorize deletes are async (best-effort, not
+    guaranteed to be immediately reflected in subsequent list/search calls).
+    """
+    if not ids:
+        return
+    url = f"{CF_API_BASE}/accounts/{ACCOUNT_ID}/vectorize/v2/indexes/{VECTORIZE_INDEX_NAME}/delete_by_ids"
+    resp = _request("POST", url, headers=_HEADERS, json={"ids": ids})
+    resp.raise_for_status()
+    data = resp.json()
+    if not data["success"]:
+        raise CloudflareAPIError(f"Vectorize delete_by_ids failed: {data['errors']}")
 
 
 # ---------------------------------------------------------------------------
