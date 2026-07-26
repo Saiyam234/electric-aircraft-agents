@@ -354,6 +354,29 @@ def upsert_kb(entry_id: str, text: str, metadata: dict | None = None) -> None:
         raise CloudflareAPIError(f"Vectorize upsert failed: {data['errors']}")
 
 
+def _kb_entry_exists(entry_id: str, attempts: int = 6, delay: float = 4.0) -> list[KBEntry]:
+    """Checks existence via get_kb_entries(), retrying several times.
+
+    Empirically, Vectorize's get_by_ids does NOT guarantee consistent reads
+    across successive calls even moments apart — observed a call return an
+    entry, then an immediate next call for the same ID return empty, with
+    the inconsistency persisting well past what a couple of quick retries
+    can paper over (in line with the 20-45s+ consistency window measured
+    for list_kb_ids). Even this longer retry budget (~20s) is best-effort,
+    not a guarantee, for entries written mere seconds ago. It is not a
+    practical concern for what this guards against in practice: re-running
+    the same research topic minutes/hours/days later, by which point any
+    reasonable consistency window has long since passed.
+    """
+    for attempt in range(attempts):
+        existing = get_kb_entries([entry_id])
+        if existing:
+            return existing
+        if attempt < attempts - 1:
+            time.sleep(delay)
+    return []
+
+
 def upsert_kb_checked(entry_id: str, text: str, metadata: dict | None = None) -> dict:
     """Upsert a KB entry, but reject if entry_id already exists.
 
@@ -365,11 +388,12 @@ def upsert_kb_checked(entry_id: str, text: str, metadata: dict | None = None) ->
     Manager's job (semantic similarity via cosine distance, human-reviewed,
     never auto-merged).
 
-    Relies on get_kb_entries(), which returns [] for an ID that plainly
-    doesn't exist (verified — no exception to handle). Vectorize's read
-    endpoints are eventually consistent, so an entry inserted moments ago
-    in the SAME run may not be visible yet; not a concern for the realistic
-    use case this guards (separate runs, minutes/days apart).
+    This is a best-effort check, not a strict guarantee: for entries
+    written more than ~30s ago (the realistic re-run case — separate
+    process invocations, minutes to days apart), it reliably detects
+    existence. For entries written moments ago in the SAME run, Vectorize's
+    read consistency is unreliable even across retries (see
+    _kb_entry_exists) — not a practical concern for the case this guards.
 
     Returns:
         {"status": "created", "entry_id": entry_id}
@@ -377,7 +401,7 @@ def upsert_kb_checked(entry_id: str, text: str, metadata: dict | None = None) ->
     Raises:
         ValueError: if entry_id already exists
     """
-    existing = get_kb_entries([entry_id])
+    existing = _kb_entry_exists(entry_id)
     if existing:
         existing_text = existing[0]["metadata"].get("text", "")
         raise ValueError(
