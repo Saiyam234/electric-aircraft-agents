@@ -133,6 +133,14 @@ def create_baseline(config: dict, version: str | None = None) -> int:
     return _d1_query("SELECT id FROM baselines WHERE version = ?", [version])[0]["id"]
 
 
+def list_baselines(limit: int = 50) -> list[dict]:
+    """Lightweight listing (no config blob) for project-state tracking/reporting."""
+    return _d1_query(
+        "SELECT id, version, status, created_at FROM baselines ORDER BY created_at DESC LIMIT ?",
+        [limit],
+    )
+
+
 def get_baseline(baseline_id: int) -> dict:
     rows = _d1_query("SELECT * FROM baselines WHERE id = ?", [baseline_id])
     if not rows:
