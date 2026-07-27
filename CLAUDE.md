@@ -269,21 +269,29 @@ so this isn't silently forgotten):
   Engineering Cluster territory (see eVTOL hard constraint above).
 
 ## Git workflow
-- `main` holds only shared infrastructure: `storage.py`, `requirements.txt`,
-  `.gitignore`, `.env.example`, this file. Never agent-specific code.
-- Every agent gets its own branch off `main` (`agent/<name>`), containing
-  just that agent's script. Committed and pushed as soon as it's built and
-  tested — see README.md for the current roster and how to run each one.
+- Everything lives on `main`. Shared infrastructure (`storage.py`,
+  `config.py`, `agent_runtime.py`, `requirements.txt`, this file) sits at the
+  repo root; every agent script lives in `agents/`.
+- HISTORICAL NOTE: agents used to live one-per-branch (`agent/<name>`). That
+  was abandoned once the merge cost became clear — every shared change had to
+  be merged into every agent branch (~24 merges at just four agents), and a
+  shared fix like the MCP security one below would have needed applying 19
+  separate times. Those branches were merged into `main` and deleted.
+- `agents/` is a Python package (`__init__.py`), so agents run as
+  `python3 -m agents.<name>` from the repo root. Running
+  `python3 agents/<name>.py` directly puts `agents/` on `sys.path` instead of
+  the repo root and breaks every agent's `import storage`.
 - `.env` (real credentials) is gitignored and never committed. `.env.example`
   has the non-secret resource identifiers filled in as a template; the actual
   API token field is always left blank there.
-- Every ClaudeAgentOptions in every agent script MUST set `tools=[]` (or an
-  explicit minimal list like `["WebSearch"]`) and `strict_mcp_config=True`.
+- Every agent MUST build its options via `agent_runtime.build_options()`,
+  which forces `tools` (defaulting to none) and `strict_mcp_config=True`.
   Without both, a spawned agent process inherits the full user-level MCP
   server config (e.g. Gmail, Calendar, Drive) regardless of `allowed_tools`,
   which only pre-approves specific tools without restricting what's visible.
-  This was discovered and fixed during the KB Manager build — don't
-  reintroduce it in new agents.
+  This is not hypothetical — it happened during the KB Manager build and
+  exposed exactly that. Constructing `ClaudeAgentOptions` by hand in a new
+  agent re-opens the hole; go through `build_options()` so it can't happen.
 
 ## Build order (don't skip steps)
 1. Storage layer (storage.py) — DONE. Tested against real D1/Vectorize/R2.
@@ -302,6 +310,34 @@ so this isn't silently forgotten):
    worth revisiting once step 5 lands and KB coverage broadens — real runs
    have proven cheap and fast enough that a fake-data rehearsal may add
    less than just doing a real one with 1-2 more agents.
+
+## Agent build waves — how the remaining roster gets built
+The 19 fixed agents are NOT built all at once. Most of them have nothing real
+to work on until earlier ones produce output — Manufacturing Manager needs a
+design to cost out, the Assurance Gate needs a real baseline to sign off,
+Physical Testing needs an aircraft. Building them early produces unverifiable
+scaffolding, which breaks the rule that every agent is verified against real
+data before being trusted.
+
+- BUILT: Orchestrator, Foundational Research Agent, KB Manager (all verified
+  against real data).
+- WAVE 1 — BUILT, NOT YET RUN: Systems Engineer, Configuration Synthesis
+  Lead, Math & Physics Engine. These work on data that already exists (KB
+  entries, requirements table, hard constraints) and form a real loop:
+  requirements -> configuration -> numerical validation.
+- WAVE 2 (needs a real configuration to exist first): Airframe Engineer,
+  Propulsion & Power Engineer, Chief Integration Agent, Innovation Validator.
+- WAVE 3 (needs a converged spec): Software Engineer, Design Realization
+  Agent, Simulation Agent.
+- WAVE 4 (needs a complete design/baseline): Review & Critic, Safety & Risk,
+  Regulatory, Manufacturing Manager, Literature Agent, Physical Testing Agent.
+
+Cluster messaging is deliberately unbuilt. CLAUDE.md describes the Concurrent
+Engineering Cluster as "one continuously-messaging team," which the current
+one-script-one-conversation pattern doesn't provide. Wave 1's three agents run
+sequentially and don't need it; building a multi-round cluster driver now
+would mean designing against imagined requirements. Revisit at Wave 2, when
+there are genuinely competing voices to arbitrate.
 
 ## Explicitly deferred (revisit later, don't rebuild from scratch)
 - Agent-sprawl pruning policy for retired dynamic agents
