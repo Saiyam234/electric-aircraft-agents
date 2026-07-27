@@ -13,10 +13,13 @@ Everything is on `main`. Shared infrastructure at the repo root, agents in
 | File | What it is |
 |---|---|
 | `storage.py` | Cloudflare D1 + Vectorize + R2 wrapper — every agent goes through this |
+| `engineering_math.py` | 29 validated aero/structural/propulsion formulas — the single source of exact numbers |
+| `agent_tools.py` | MCP tools shared by multiple agents (`calculate`, `search_kb`, `log_event`) |
 | `agent_runtime.py` | Shared options builder + streaming loop; forces the MCP security settings |
 | `config.py` | Constants and validation bounds |
 | `verify_setup.py` | Preflight check that credentials work and the DB is initialized |
-| `test_storage.py` | Integration test suite for the storage layer |
+| `test_engineering_math.py` | 40 physics tests, offline and instant — validated against published aircraft |
+| `test_storage.py` | Integration test suite for the storage layer (real Cloudflare calls) |
 
 | Agent (`agents/`) | What it does |
 |---|---|
@@ -83,13 +86,12 @@ Based on actual runs, not estimates:
 | `foundational_research_agent` | $0.75–$1.50 per topic (scales with topic breadth) | 19–31 | 10–20 cited KB entries per topic, each a specific fact with a real source URL |
 | `kb_manager_agent` | ~$0.15–$0.40 | 2–6 | A reconciliation report: candidate duplicate/overlap pairs classified, citation pass/fail counts |
 | `orchestrator_agent` | ~$0.12–$0.21 | 6 | A directive decomposition, a batched decision request, a real milestone digest, and (if triggered) an immediate escalation |
-| `systems_engineer_agent` | not yet measured | — | ~8–14 proposed requirements, each with an impact assessment, all status `proposed` |
-| `configuration_synthesis_lead_agent` | not yet measured | — | A draft baseline holding the sizing envelope + VTOL architecture comparison (selection left open) |
-| `math_physics_engine_agent` | not yet measured | — | A numerical verdict on whether a configuration closes, every figure from a Python calculation |
+| `systems_engineer_agent` | ~$0.56 | 23 | 12 proposed requirements, each KB-cited with an impact assessment, all status `proposed` |
+| `configuration_synthesis_lead_agent` | ~$0.62 | 25 | A draft baseline: sizing envelope with every number computed, hover power bracketed across rotor sizes, VTOL architecture comparison left unselected |
+| `math_physics_engine_agent` | ~$0.57 | 31 | A numerical verdict on whether the configuration closes — cruise, structures, C-rate, tip Mach, failsafe glide — every figure from a Python calculation |
 
-The three Wave 1 agents are built but have not been run yet — their costs are
-marked "not yet measured" rather than estimated, since every other number in
-this table comes from a real observed run.
+A full Wave 1 loop (requirements → configuration → validation) runs about
+**$1.75**.
 
 Every run is also traceable in `audit_log` via `agent_start`/`agent_end`
 events tagged with a `run_id` (see `storage.log_run_start`/`log_run_end`).
@@ -123,10 +125,24 @@ them for real and checking outcomes, not unit tests, since their correctness
 is about judgment quality (is this a good research fact? is this really a
 duplicate?), not deterministic function behavior.
 
+`pytest test_engineering_math.py` validates the formula library — 40 tests,
+offline, instant, free. Every case checks against a published reference
+(Cessna 172 aspect ratio and stall speed, real 2 kg quadcopter hover draw) or
+an independently-derived closed form, rather than against whatever the code
+currently returns.
+
 R2 isn't enabled on the account yet (needs a card on file for the free
 tier), so there are no R2-specific tests — `verify_setup.py` checks it
 non-blockingly (`[SKIP]`, not `[FAIL]`) and `storage.py`'s R2 functions
 raise a clear `R2NotEnabledError` until then.
+
+### A note on Vectorize flakiness
+
+The KB tests poll with a generous timeout because Vectorize is eventually
+consistent with highly variable lag — usually 15–45s, but a measured **189s**
+right after a bulk delete, alongside genuine read timeouts from the Cloudflare
+API. If those four tests fail, check whether the index is simply slow before
+assuming a regression: the D1 tests are unaffected by this and will still pass.
 
 ## Deduplication strategy
 

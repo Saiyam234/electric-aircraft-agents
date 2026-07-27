@@ -23,12 +23,20 @@ def _unique(suffix: str) -> str:
     return f"{TEST_PREFIX}-{suffix}-{uuid.uuid4().hex[:8]}"
 
 
-def _wait_until(predicate, timeout: float = 60.0, interval: float = 3.0):
+def _wait_until(predicate, timeout: float = 240.0, interval: float = 5.0):
     """Polls predicate() until it returns truthy or timeout elapses.
 
-    Vectorize is eventually consistent with variable lag (observed anywhere
-    from ~15s to 45s+ depending on recent mutation volume) — a fixed sleep
-    is the wrong tool here; poll instead.
+    Vectorize is eventually consistent with highly variable lag — a fixed
+    sleep is the wrong tool, so poll instead.
+
+    On the observed lag: normally ~15-45s, but a measured 189s was seen right
+    after a bulk delete (alongside genuine read timeouts from the Cloudflare
+    API), presumably while the index reorganised. The timeout is set well
+    above that worst case deliberately. It costs nothing on a healthy
+    service, because this returns the moment the predicate passes — it only
+    buys patience during a degraded window, which is exactly when a short
+    ceiling would produce a false failure and send someone hunting a bug that
+    isn't in this repo.
     """
     deadline = time.time() + timeout
     result = predicate()
@@ -179,7 +187,7 @@ def test_upsert_kb_checked_rejects_duplicate(kb_entry_id):
             return "already exists" in str(exc)
         return False
 
-    assert _wait_until(raises_duplicate, timeout=90.0, interval=20.0), (
+    assert _wait_until(raises_duplicate, timeout=300.0, interval=20.0), (
         f"upsert_kb_checked never raised for existing entry {kb_entry_id} within timeout"
     )
 
