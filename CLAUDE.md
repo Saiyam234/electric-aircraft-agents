@@ -19,6 +19,18 @@ the solution.
 - Scale: 1:8 — the real, true target size of the aircraft. Modeled in Fusion
   360 at 1:1 / true dimensions of this scale. No "scale down" step in CAD.
 - Propulsion: electric
+- Takeoff/landing: DECIDED — eVTOL (vertical takeoff and landing). This is a
+  capability requirement, the same tier as propulsion and flight autonomy
+  level — it is NOT a specific engineering solution and does not decide the
+  VTOL architecture. Which configuration (tiltrotor, tiltwing, lift+cruise
+  hybrid with separate hover/cruise propulsion, tailsitter, etc.) is
+  explicitly NOT Saiyam's to choose, per the founding principle — it is
+  discovered, proven, and selected by the Concurrent Engineering Cluster
+  like any other engineering solution, never defaulted toward a reference
+  design just because it's familiar. (Context: this requirement was added
+  after Saiyam saw a tiltrotor eVTOL project online — the architecture is
+  explicitly left open specifically so that inspiration doesn't become the
+  answer by default.)
 - Flight autonomy level: DECIDED — the aircraft flies itself, autonomously,
   with no remote pilot. Current build target: autonomous flight-control-only
   (follows a pre-set flight plan/waypoints on its own, like a standard
