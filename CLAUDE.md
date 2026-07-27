@@ -211,6 +211,63 @@ separate — a real accountability boundary, not extra headcount.
 - Local development: build and test every agent locally first, deploy
   anywhere is a decision for later.
 
+## Aircraft engineering toolchain
+Distinct from the "Tech stack" above, which is about the AGENT infrastructure
+(where agents run, where they store data). This section is about the
+software used to actually design/analyze/build the AIRCRAFT. Same
+founding-principle split applies: infrastructure/tooling is decided
+directly (like Cloudflare above); anything that touches the actual
+engineering approach is reserved for the agent system, confirmed explicitly
+by Saiyam even for a case (flight-control software platform) that could
+have plausibly been argued either way.
+
+Grounded in real research (WebSearch, cited) into what actual eVTOL/UAV
+engineering teams use — not assumptions.
+
+DECIDED (infrastructure/tooling — analyzes or supports whatever the agents
+design, doesn't dictate an engineering answer):
+- CAD: Fusion 360. Confirmed realistic for startup/hobbyist eVTOL scale;
+  CATIA/NX are the real industry gold standard but only become necessary at
+  Boeing/Airbus contractor scale.
+- Aerodynamics analysis: XFLR5 (free, airfoil/wing-level) + OpenVSP (free,
+  NASA, parametric whole-aircraft geometry) — complementary, not
+  overlapping.
+- CFD, as-needed (not day-one): SimScale (free tier) — confirmed used
+  specifically for VTOL hover-to-cruise transition aerodynamics, which is
+  exactly our open problem once a VTOL architecture is chosen.
+- Structural analysis: Fusion 360's built-in Simulation workspace. No new
+  tool needed; heavier tools (Ansys/Simcenter) are enterprise-priced and
+  not justified at this scale.
+- Propulsion sizing: eCalc + APC propeller performance data — standard
+  RC-community tools for motor/prop/battery matching before buying
+  hardware.
+- Electronics, if/when a custom board becomes necessary: KiCad (free).
+- Manufacturing: Fusion 360 CAM + a slicer (Cura/PrusaSlicer, TBD by
+  printer) — fabrication method itself is still open (see below), tool
+  choice is ready whenever that's resolved.
+- Requirements tracking: the existing D1 `requirements` table (already
+  built), not an enterprise tool. Real programs use IBM DOORS/Jama
+  Connect/Polarion for this (confirmed via research), but those are
+  enterprise-licensed and unjustified for solo scale — our lightweight
+  system already covers the core need (traceable requirements linked to a
+  baseline).
+- Documentation pipeline: Pandoc (Markdown -> PDF), for Literature Agent's
+  eventual research-paper/engineering-doc deliverables.
+
+EXPLICITLY DEFERRED to the relevant future agent (not decided here, recorded
+so this isn't silently forgotten):
+- Flight-control software platform (ArduPilot vs. PX4 vs. custom) —
+  Software Engineer agent's call once it exists, via the same "propose with
+  impact assessment" pattern Systems Engineer already uses. Confirmed
+  explicitly with Saiyam: even though this is more "development platform"
+  than "physical design," it stays agent-territory rather than being
+  finalized directly.
+- Ground control station software — follows from the above.
+- SITL/HIL simulation & flight-control V&V approach — Simulation Agent's
+  call once it exists.
+- Specific VTOL architecture — already established as Concurrent
+  Engineering Cluster territory (see eVTOL hard constraint above).
+
 ## Git workflow
 - `main` holds only shared infrastructure: `storage.py`, `requirements.txt`,
   `.gitignore`, `.env.example`, this file. Never agent-specific code.
@@ -235,8 +292,16 @@ separate — a real accountability boundary, not extra headcount.
    access. Two topics researched so far with real, cited sources.
 4. 2-3 more individual agents, each tested alone — DONE: KB Manager and
    Orchestrator, both tested against real (not fabricated) project data.
-5. THEN orchestration/handoff logic between agents — CURRENT STEP.
-6. THEN a hand-run dry-run of the full lifecycle with fake data.
+5. THEN orchestration/handoff logic between agents — CURRENT STEP, IN
+   PROGRESS. A real handoff test (Orchestrator decomposes a directive into
+   a specific question -> that exact question passed to Foundational
+   Research Agent -> result verified landed in the KB) has been attempted
+   and paused twice (once interrupted mid-setup, once explicitly deferred
+   by Saiyam pending agent hardening) — not yet actually completed.
+6. THEN a hand-run dry-run of the full lifecycle with fake data. May be
+   worth revisiting once step 5 lands and KB coverage broadens — real runs
+   have proven cheap and fast enough that a fake-data rehearsal may add
+   less than just doing a real one with 1-2 more agents.
 
 ## Explicitly deferred (revisit later, don't rebuild from scratch)
 - Agent-sprawl pruning policy for retired dynamic agents
