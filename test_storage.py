@@ -13,6 +13,7 @@ import time
 import uuid
 
 import pytest
+import requests
 
 import storage
 
@@ -37,12 +38,27 @@ def _wait_until(predicate, timeout: float = 240.0, interval: float = 5.0):
     buys patience during a degraded window, which is exactly when a short
     ceiling would produce a false failure and send someone hunting a bug that
     isn't in this repo.
+
+    A transient API failure inside the predicate is treated as "not true yet"
+    rather than allowed to escape. Cloudflare intermittently returns 4xx/5xx or
+    drops the connection during a degraded window, and without this a single
+    such blip fails the whole test even though the next poll would have
+    succeeded — which is the opposite of what a polling helper is for. Only
+    request/API errors are swallowed; anything else still propagates, so a real
+    bug in the predicate is not masked.
     """
     deadline = time.time() + timeout
-    result = predicate()
+
+    def attempt():
+        try:
+            return predicate()
+        except (requests.exceptions.RequestException, storage.CloudflareAPIError):
+            return False
+
+    result = attempt()
     while not result and time.time() < deadline:
         time.sleep(interval)
-        result = predicate()
+        result = attempt()
     return result
 
 
