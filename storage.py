@@ -68,6 +68,16 @@ class BaselineDetail(TypedDict):
     signoffs: list[SignoffRow]
 
 
+class RequirementRow(TypedDict):
+    id: int
+    text: str
+    status: str
+    baseline_id: int | None
+    impact_assessment: str | None
+    created_at: str
+    updated_at: str
+
+
 class AuditLogRow(TypedDict):
     id: int
     timestamp: str
@@ -292,6 +302,26 @@ def update_requirement_status(requirement_id: int, status: str) -> None:
     _d1_query(
         "UPDATE requirements SET status = ?, updated_at = ? WHERE id = ?",
         [status, _now(), requirement_id],
+    )
+
+
+_REQUIREMENT_COLUMNS = "id, text, status, baseline_id, impact_assessment, created_at, updated_at"
+
+
+def list_requirements(baseline_id: int | None = None, limit: int = 100) -> list[RequirementRow]:
+    """Lists requirements newest-first, optionally filtered to one baseline.
+
+    Requirements could be written and updated but never read back, which made
+    traceability (the Systems Engineer's core job per CLAUDE.md) impossible.
+    """
+    if baseline_id is None:
+        return _d1_query(
+            f"SELECT {_REQUIREMENT_COLUMNS} FROM requirements ORDER BY id DESC LIMIT ?",
+            [limit],
+        )
+    return _d1_query(
+        f"SELECT {_REQUIREMENT_COLUMNS} FROM requirements WHERE baseline_id = ? ORDER BY id DESC LIMIT ?",
+        [baseline_id, limit],
     )
 
 

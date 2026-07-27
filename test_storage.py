@@ -111,6 +111,27 @@ def test_requirement_lifecycle(baseline_id):
     assert rows[0]["status"] == "approved"
 
 
+def test_list_requirements(baseline_id):
+    text = f"pytest requirement {_unique('req')}"
+    req_id = storage.add_requirement(text, baseline_id=baseline_id)
+
+    # Unfiltered listing should surface it
+    all_reqs = storage.list_requirements(limit=200)
+    assert any(r["id"] == req_id and r["text"] == text for r in all_reqs)
+
+    # Filtered to this baseline, it should be the only one
+    scoped = storage.list_requirements(baseline_id=baseline_id)
+    assert [r["id"] for r in scoped] == [req_id]
+    assert scoped[0]["status"] == "proposed"
+    assert scoped[0]["baseline_id"] == baseline_id
+
+
+def test_list_requirements_filters_by_baseline(baseline_id):
+    storage.add_requirement("pytest requirement attached to a baseline", baseline_id=baseline_id)
+    other = storage.list_requirements(baseline_id=baseline_id + 10_000_000)
+    assert other == []
+
+
 def test_log_event_and_get_audit_log(baseline_id):
     marker = _unique("event")
     storage.log_event("pytest", "test_event", marker, related_baseline_id=baseline_id)
