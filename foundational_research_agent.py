@@ -19,9 +19,13 @@ Usage:
     python3 foundational_research_agent.py --all                    # the 6 CLAUDE.md topics
     python3 foundational_research_agent.py --all --topic "extra one" # all 6 plus a custom one
 
-Each topic runs in its own conversation. If a topic's run errors out, it's
-retried once; if it still fails, that topic is marked failed and the batch
-continues with the remaining topics rather than aborting the whole run.
+Each topic runs in its own conversation, storing facts incrementally as it
+finds them (not batched at the end) so a hard cutoff doesn't lose completed
+work. If a topic's run genuinely errors out, it's retried once. If it
+instead runs out of its turn budget on a broad topic, that's treated as an
+expected "partial" outcome (not retried — retrying would just re-run the
+same broad topic into the same ceiling again) and flagged for a narrower
+follow-up topic rather than failing the batch.
 """
 
 import argparse
@@ -129,28 +133,47 @@ benefit from their own dedicated research run (e.g. "this topic is broad; covere
 fundamentals of X, but sub-topics like Y and Z would benefit from their own dedicated
 research runs").
 
-Steps:
-1. Use WebSearch to find real sources on this topic (technical articles, manufacturer
-   datasheets, standards documents, published papers, established guides — whatever has
-   real numbers). Do several distinct searches to cover the topic's real breadth, not just
-   one narrow angle of it.
-2. From what you find, extract SPECIFIC, PRECISE data points an engineer would actually
-   use — exact numeric limits, thresholds, ratios, formulas, or specific named failure
-   modes and their triggers. Do NOT write vague statements — every entry must contain a
-   concrete number or a specific, falsifiable claim.
-3. If one source contains multiple genuinely distinct important facts, create a SEPARATE
-   knowledge base entry for each distinct fact rather than combining them into one
-   paragraph, so each stays precise and individually searchable.
-4. For every fact, call the upsert_kb tool with:
+SURVEY THE REAL RANGE — this project's founding principle (CLAUDE.md) is that no
+engineering solution is decided by default or because it's familiar; the agent ecosystem
+discovers what actually works from evidence. This applies to research too. Where a topic
+touches an open engineering decision (an approach with multiple real, competing solutions —
+e.g. different aircraft configurations, different control architectures, different
+structural approaches), do NOT research only the most common/familiar one and present it as
+the answer. Actively search for and include less-common but well-evidenced alternatives too,
+even ones that aren't the default choice. The goal is to arm the engineering agents with the
+actual solution space, not a single reference design.
+
+TURN BUDGET: you have a hard limit of {MAX_TURNS} conversation turns for this ENTIRE task —
+searching, extracting, AND storing, all together. This is not optional, and the conversation
+will be cut off the instant it's reached, with no chance afterward to do a final summary or
+catch-up storage. Because of that, work INCREMENTALLY — do not search everything first and
+store everything at the end; if you're cut off mid-way through that plan, everything you
+found is lost. Instead, repeat this cycle per sub-area rather than batching:
+
+1. Use WebSearch for ONE sub-area or angle of the topic at a time.
+2. Immediately extract SPECIFIC, PRECISE facts from what you just found — exact numeric
+   limits, thresholds, ratios, formulas, or specific named failure modes and their
+   triggers. Do NOT write vague statements — every entry must contain a concrete number or
+   a specific, falsifiable claim.
+3. Immediately call upsert_kb for each distinct fact from that search, right away, before
+   moving to the next sub-area — do not queue facts up to store later. If one source
+   contains multiple genuinely distinct facts, create a SEPARATE entry for each rather than
+   combining them into one paragraph.
    - entry_id: a unique, descriptive slug you generate (e.g. "{topic_tag}-<short-description>")
    - text: the specific fact itself, written precisely, in one or two sentences
    - topic: "{topic_tag}"
    - source_url: the real URL you found this in
    - source_title: the title/name of that source
-5. When done, call log_event ONCE with event_type="foundational_research" and a description
-   summarizing how many entries you created, what topic was covered, and — if this topic
-   turned out to be broad per the SCOPE guidance above — which sub-areas still need their
-   own dedicated research runs.
+4. Move to the next sub-area and repeat, roughly tracking how much of your turn budget
+   you've used. If you sense you're running low, stop opening new sub-areas and make sure
+   log_event (next step) gets called before you run out — even if that means covering less
+   breadth than you'd like.
+5. Call log_event ONCE, as close to the end as you can safely fit it in, with
+   event_type="foundational_research" and a description summarizing how many entries you
+   created, what topic was covered, and — if this topic turned out to be broad per the
+   SCOPE guidance above — which sub-areas still need their own dedicated research runs. If
+   you get cut off before reaching this step, whatever you already stored via upsert_kb
+   still stands on its own — that's the whole point of storing incrementally.
 
 Do not fabricate numbers or sources. If you can't verify a specific figure from a real
 source, don't include it as a precise claim.
@@ -179,7 +202,7 @@ async def research_topic(topic: str) -> dict:
         permission_mode="bypassPermissions",
     )
 
-    stats = {"cost": 0.0, "entries_created": 0, "entries_skipped": 0, "turns": 0}
+    stats = {"cost": 0.0, "entries_created": 0, "entries_skipped": 0, "turns": 0, "hit_turn_limit": False}
     approx_turns = 0
     warned_long_run = False
     run_id = storage.log_run_start("FoundationalResearchAgent")
@@ -215,12 +238,19 @@ async def research_topic(topic: str) -> dict:
             elif isinstance(message, ResultMessage):
                 stats["cost"] = message.total_cost_usd or 0.0
                 stats["turns"] = message.num_turns
+                stats["hit_turn_limit"] = message.terminal_reason == "max_turns"
                 print(
                     f"\n--- topic={topic!r} turns={message.num_turns} "
-                    f"cost=${stats['cost']:.4f} error={message.is_error} ---"
+                    f"cost=${stats['cost']:.4f} error={message.is_error} "
+                    f"terminal_reason={message.terminal_reason} ---"
                 )
                 storage.log_run_end("FoundationalResearchAgent", run_id, message.num_turns, stats["cost"])
-                if message.is_error:
+                # A max_turns cutoff on a broad topic is an expected outcome, not a bug --
+                # whatever was found is already safely stored (incremental storage, above).
+                # Retrying would just re-run the same broad topic into the same ceiling
+                # again, wasting cost for no gain; only treat genuinely unexpected errors
+                # as retry-worthy.
+                if message.is_error and not stats["hit_turn_limit"]:
                     raise RuntimeError(f"agent run for topic {topic!r} errored: {message.result}")
     return stats
 
@@ -235,7 +265,8 @@ async def research_topic_with_retry(topic: str, retries: int = 1) -> dict:
     for attempt in range(retries + 1):
         try:
             stats = await research_topic(topic)
-            stats.update(topic=topic, status="ok")
+            status = "partial" if stats.get("hit_turn_limit") else "ok"
+            stats.update(topic=topic, status=status)
             return stats
         except Exception as exc:  # noqa: BLE001 — deliberately broad: any failure should be retried/reported, not crash the batch
             last_error = exc
@@ -276,13 +307,22 @@ async def main():
     total_entries = sum(r["entries_created"] for r in results)
     total_skipped = sum(r.get("entries_skipped", 0) for r in results)
     failed = [r for r in results if r["status"] == "failed"]
+    partial = [r for r in results if r["status"] == "partial"]
 
     print(f"\n===== SUMMARY — {len(topics)} topic(s) =====")
     for r in results:
-        status_line = "OK" if r["status"] == "ok" else f"FAILED ({r.get('error')})"
+        if r["status"] == "ok":
+            status_line = "OK"
+        elif r["status"] == "partial":
+            status_line = "PARTIAL (hit turn limit — narrower follow-up topic recommended)"
+        else:
+            status_line = f"FAILED ({r.get('error')})"
         skipped_str = f", skipped={r['entries_skipped']}" if r.get("entries_skipped") else ""
         print(f"  - {r['topic']}: {status_line}, created={r['entries_created']}{skipped_str}, cost=${r['cost']:.4f}")
-    print(f"Total: {total_entries} created, {total_skipped} skipped, ${total_cost:.4f} spent, {len(failed)} topic(s) failed")
+    print(
+        f"Total: {total_entries} created, {total_skipped} skipped, ${total_cost:.4f} spent, "
+        f"{len(partial)} topic(s) partial, {len(failed)} topic(s) failed"
+    )
 
 
 if __name__ == "__main__":
