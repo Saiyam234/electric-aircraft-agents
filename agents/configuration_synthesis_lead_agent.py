@@ -31,24 +31,12 @@ import time
 import anyio
 
 import agent_runtime
+import agent_tools
+import engineering_math
 import storage
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
 AGENT_NAME = "ConfigurationSynthesisLead"
-
-
-@tool("search_kb", "Semantic search the knowledge base for evidence to ground a design number", {"query": str})
-async def search_kb_tool(args):
-    matches = storage.search_kb(args["query"], top_k=5)
-    trimmed = [
-        {
-            "id": m["id"],
-            "text": m["metadata"].get("text", ""),
-            "source_title": m["metadata"].get("source_title", ""),
-        }
-        for m in matches
-    ]
-    return {"content": [{"type": "text", "text": json.dumps(trimmed, default=str)}]}
 
 
 @tool("list_requirements", "List the requirements this configuration has to satisfy", {})
@@ -94,16 +82,13 @@ async def record_configuration_tool(args):
     }
 
 
-@tool("log_event", "Log a summary event to the audit log", {"event_type": str, "description": str})
-async def log_event_tool(args):
-    storage.log_event(AGENT_NAME, args["event_type"], args["description"])
-    return {"content": [{"type": "text", "text": "Logged event"}]}
-
+log_event_tool = agent_tools.make_log_event_tool(AGENT_NAME)
 
 storage_server = create_sdk_mcp_server(
     name="storage",
     tools=[
-        search_kb_tool,
+        agent_tools.calculate_tool,
+        agent_tools.search_kb_tool,
         list_requirements_tool,
         list_baselines_tool,
         record_configuration_tool,
@@ -112,6 +97,7 @@ storage_server = create_sdk_mcp_server(
 )
 
 ALLOWED_TOOLS = [
+    "mcp__storage__calculate",
     "mcp__storage__search_kb",
     "mcp__storage__list_requirements",
     "mcp__storage__list_baselines",
@@ -119,22 +105,47 @@ ALLOWED_TOOLS = [
     "mcp__storage__log_event",
 ]
 
-PROMPT = """You are the Configuration Synthesis Lead for a multi-agent electric aircraft
+PROMPT = f"""You are the Configuration Synthesis Lead for a multi-agent electric aircraft
 engineering project. You own the overall aircraft configuration: dimensions, wing loading,
 power loading, general arrangement, weight & balance.
 
 The aircraft is a 1:8-scale, electric, fully autonomous eVTOL (vertical takeoff and landing
 is required). It follows a pre-set waypoint plan on its own — no remote pilot.
 
+ABSOLUTE RULE — NEVER DO ARITHMETIC YOURSELF:
+Every number in your configuration must come from a calculate call or be a stated input
+assumption. Do not work out wing loading, stall speed, aspect ratio, power, or energy in
+your reasoning text. A previous run of this agent computed those inline and happened to get
+them right; that is luck, not engineering. If no formula fits, say so rather than estimating.
+
+AVAILABLE FORMULAS (exact parameter names required):
+{engineering_math.format_formula_docs()}
+
 Steps:
-1. Call list_requirements to see what this configuration must satisfy.
-2. Call list_baselines to see what already exists (expect only test artifacts).
-3. Use search_kb repeatedly to ground your numbers in real evidence. The knowledge base has
-   cited research on wing loading, stall speed, aspect-ratio trades, airfoil data, battery
-   limits, and composite structures. Pull real figures rather than estimating from memory.
-4. Call record_configuration ONCE with your configuration as a JSON object.
-5. Call log_event ONCE with event_type="configuration_drafted" summarizing what you set,
+1. Call list_requirements to see what this configuration must satisfy. Some carry hard
+   numeric limits — your configuration must not violate them.
+2. Call list_baselines to see what already exists.
+3. Use search_kb repeatedly to ground your inputs in cited evidence. The knowledge base has
+   research on wing loading, stall speed, aspect-ratio trades, airfoil data, battery limits,
+   and composite structures. Pull real figures rather than recalling them.
+4. Derive the configuration using calculate for every computed quantity. Sanity-check your
+   own sizing as you go — at minimum verify stall speed, cruise power, and (across a
+   bracketed range of plausible rotor sizes, since architecture is open) hover power. If
+   hover power turns out to dominate the energy budget, that is a finding worth stating
+   loudly rather than burying.
+5. Call record_configuration ONCE with your configuration as a JSON object.
+6. Call log_event ONCE with event_type="configuration_drafted" summarizing what you set,
    what you left open, and what most needs challenging by other agents.
+
+ON THE 1:8 SCALE — READ CAREFULLY:
+"1:8 scale" fixes a ratio, not a size, and it only means something once there is a
+full-scale reference aircraft to be 1:8 OF. That reference has never been defined. Do not
+silently invent one and present the resulting dimensions as settled — a previous run
+assumed a reference and every linear dimension inherited that assumption invisibly.
+Instead: state plainly that the reference is undefined, pick an explicit working assumption,
+label it as such, show which dimensions scale directly with it, and flag it as a decision
+Saiyam or the Orchestrator must make. This is the single largest source of uncertainty in
+the whole configuration and it must be visible, not buried.
 
 WHAT THE CONFIGURATION SHOULD CONTAIN:
 A JSON object with, at minimum: overall dimensions (wingspan, wing area, length), estimated
