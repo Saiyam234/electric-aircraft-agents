@@ -69,8 +69,9 @@ async def run_agent(
     options: ClaudeAgentOptions,
     prompt: str,
     *,
-    truncate: int = DEFAULT_RESULT_TRUNCATE,
+    truncate: int | None = DEFAULT_RESULT_TRUNCATE,
     on_tool_result: Callable[[str], None] | None = None,
+    on_assistant_turn: Callable[[int], None] | None = None,
 ) -> dict:
     """Runs one agent conversation to completion, printing progress as it goes.
 
@@ -82,17 +83,25 @@ async def run_agent(
     result text (e.g. counting stored vs. skipped KB entries) would otherwise
     miss anything past the truncation point.
 
+    `on_assistant_turn` is called with the running count of assistant messages,
+    for agents that track how much of their turn budget they've consumed and
+    warn before hitting the ceiling.
+
     Returns {"cost", "turns", "is_error", "hit_turn_limit"}. Does not raise on
     an errored run — the caller decides what a failure means, since for some
     agents hitting the turn limit is an expected outcome rather than a bug.
     """
     stats = {"cost": 0.0, "turns": 0, "is_error": False, "hit_turn_limit": False}
+    assistant_turns = 0
     run_id = storage.log_run_start(agent_name)
 
     async with ClaudeSDKClient(options=options) as client:
         await client.query(prompt)
         async for message in client.receive_response():
             if isinstance(message, AssistantMessage):
+                assistant_turns += 1
+                if on_assistant_turn is not None:
+                    on_assistant_turn(assistant_turns)
                 for block in message.content:
                     if isinstance(block, TextBlock):
                         print(block.text)
@@ -104,7 +113,7 @@ async def run_agent(
                         text = str(block.content)
                         if on_tool_result is not None:
                             on_tool_result(text)
-                        if len(text) > truncate:
+                        if truncate is not None and len(text) > truncate:
                             text = text[:truncate] + " ...[truncated]"
                         print(f"  [result]  {text}")
             elif isinstance(message, ResultMessage):

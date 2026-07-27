@@ -11,19 +11,10 @@ import json
 import time
 
 import anyio
+
+import agent_runtime
 import storage
-from claude_agent_sdk import (
-    AssistantMessage,
-    ClaudeAgentOptions,
-    ClaudeSDKClient,
-    ResultMessage,
-    TextBlock,
-    ToolResultBlock,
-    ToolUseBlock,
-    UserMessage,
-    create_sdk_mcp_server,
-    tool,
-)
+from claude_agent_sdk import create_sdk_mcp_server, tool
 
 
 @tool("add_requirement", "Add a requirement to the requirements table", {"text": str})
@@ -119,36 +110,19 @@ if stamped=True, step 6 is PASS only if your step-5 entry_id is present in the s
 
 
 async def main():
-    options = ClaudeAgentOptions(
-        mcp_servers={"storage": storage_server},
-        tools=[],  # no built-in tools (Bash/Read/Write/etc.) — only the storage MCP tools below
-        allowed_tools=ALLOWED_TOOLS,
-        strict_mcp_config=True,  # ignore any user/project MCP config — only the server passed above
+    options = agent_runtime.build_options(
         system_prompt=(
             "You are a test agent verifying the electric-aircraft-agents storage layer. "
             "Use only the provided storage tools to complete the task. Be concise."
         ),
+        storage_server=storage_server,
+        allowed_tools=ALLOWED_TOOLS,
         max_turns=20,
-        permission_mode="bypassPermissions",
     )
 
-    run_id = storage.log_run_start("TestAgent")
-    async with ClaudeSDKClient(options=options) as client:
-        await client.query(PROMPT)
-        async for message in client.receive_response():
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        print(block.text)
-                    elif isinstance(block, ToolUseBlock):
-                        print(f"  [calling] {block.name}({block.input})")
-            elif isinstance(message, UserMessage):
-                for block in message.content:
-                    if isinstance(block, ToolResultBlock):
-                        print(f"  [result]  {block.content}")
-            elif isinstance(message, ResultMessage):
-                print(f"\n--- turns={message.num_turns} cost=${message.total_cost_usd:.4f} error={message.is_error} ---")
-                storage.log_run_end("TestAgent", run_id, message.num_turns, message.total_cost_usd or 0.0)
+    # truncate=None preserves this agent's original untruncated result printing —
+    # it's the storage smoke test, so seeing full tool output is the point.
+    await agent_runtime.run_agent("TestAgent", options, PROMPT, truncate=None)
 
 
 if __name__ == "__main__":

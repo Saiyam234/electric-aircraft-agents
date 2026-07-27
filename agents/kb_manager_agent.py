@@ -28,23 +28,13 @@ review) once the KB grows much larger.
 """
 
 import argparse
-import sys
 from itertools import combinations
 
 import anyio
+
+import agent_runtime
 import storage
-from claude_agent_sdk import (
-    AssistantMessage,
-    ClaudeAgentOptions,
-    ClaudeSDKClient,
-    ResultMessage,
-    TextBlock,
-    ToolResultBlock,
-    ToolUseBlock,
-    UserMessage,
-    create_sdk_mcp_server,
-    tool,
-)
+from claude_agent_sdk import create_sdk_mcp_server, tool
 
 SIMILARITY_THRESHOLD = 0.85  # pairs at/above this are passed to the agent for judgment
 MAX_CANDIDATE_PAIRS = 40  # keeps the prompt bounded even if many entries cluster tightly
@@ -171,43 +161,26 @@ async def main():
     citation_results = validate_citations(entries)
     print(f"Citations: {len(citation_results['passed'])} passed, {len(citation_results['failed'])} failed.")
 
-    options = ClaudeAgentOptions(
-        mcp_servers={"storage": storage_server},
-        tools=[],  # no built-in tools (Bash/Read/Write/etc.) — only the storage MCP tool below
-        allowed_tools=ALLOWED_TOOLS,
-        strict_mcp_config=True,  # ignore any user/project MCP config — only the server passed above
+    options = agent_runtime.build_options(
         system_prompt=(
             "You are the KB Manager from a multi-agent electric aircraft engineering "
             "project's Knowledge Base division. You reconcile and flag — you never "
             "silently merge or delete data. Be precise and concise."
         ),
+        storage_server=storage_server,
+        allowed_tools=ALLOWED_TOOLS,
         max_turns=20,
-        permission_mode="bypassPermissions",
     )
 
-    cost = 0.0
-    run_id = storage.log_run_start("KBManager")
-    async with ClaudeSDKClient(options=options) as client:
-        await client.query(build_prompt(entries, candidate_pairs, citation_results))
-        async for message in client.receive_response():
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        print(block.text)
-                    elif isinstance(block, ToolUseBlock):
-                        print(f"  [calling] {block.name}({block.input})")
-            elif isinstance(message, UserMessage):
-                for block in message.content:
-                    if isinstance(block, ToolResultBlock):
-                        print(f"  [result]  {block.content}")
-            elif isinstance(message, ResultMessage):
-                cost = message.total_cost_usd or 0.0
-                print(f"\n--- turns={message.num_turns} cost=${cost:.4f} error={message.is_error} ---")
-                storage.log_run_end("KBManager", run_id, message.num_turns, cost)
-                if message.is_error:
-                    print(message.result, file=sys.stderr)
+    # truncate=None preserves this agent's original untruncated result printing.
+    stats = await agent_runtime.run_agent(
+        "KBManager", options, build_prompt(entries, candidate_pairs, citation_results), truncate=None
+    )
 
-    print(f"\n===== DONE — {len(entries)} entries reviewed, {len(candidate_pairs)} candidate pairs, cost ${cost:.4f} =====")
+    print(
+        f"\n===== DONE — {len(entries)} entries reviewed, {len(candidate_pairs)} candidate pairs, "
+        f"cost ${stats['cost']:.4f} ====="
+    )
 
 
 if __name__ == "__main__":

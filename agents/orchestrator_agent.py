@@ -25,22 +25,11 @@ tools entirely.
 """
 
 import json
-import sys
-
 import anyio
+
+import agent_runtime
 import storage
-from claude_agent_sdk import (
-    AssistantMessage,
-    ClaudeAgentOptions,
-    ClaudeSDKClient,
-    ResultMessage,
-    TextBlock,
-    ToolResultBlock,
-    ToolUseBlock,
-    UserMessage,
-    create_sdk_mcp_server,
-    tool,
-)
+from claude_agent_sdk import create_sdk_mcp_server, tool
 
 ESCALATION_CATEGORIES = {"safety", "regulatory", "irreversible_cost"}
 
@@ -172,46 +161,19 @@ tell apart:
 
 
 async def main():
-    options = ClaudeAgentOptions(
-        mcp_servers={"storage": storage_server},
-        tools=[],  # no built-in tools (Bash/Read/Write/etc.) — only the storage MCP tools below
-        allowed_tools=ALLOWED_TOOLS,
-        strict_mcp_config=True,  # ignore any user/project MCP config — only the server passed above
+    options = agent_runtime.build_options(
         system_prompt=(
             "You are the Orchestrator from a multi-agent electric aircraft engineering "
             "project. You enforce the escalation rule against everything you do, with no "
             "exceptions. Be precise and concrete — no filler, no vague restatements."
         ),
+        storage_server=storage_server,
+        allowed_tools=ALLOWED_TOOLS,
         max_turns=25,
-        permission_mode="bypassPermissions",
     )
 
-    cost = 0.0
-    run_id = storage.log_run_start("Orchestrator")
-    async with ClaudeSDKClient(options=options) as client:
-        await client.query(PROMPT)
-        async for message in client.receive_response():
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        print(block.text)
-                    elif isinstance(block, ToolUseBlock):
-                        print(f"  [calling] {block.name}({block.input})")
-            elif isinstance(message, UserMessage):
-                for block in message.content:
-                    if isinstance(block, ToolResultBlock):
-                        text = str(block.content)
-                        if len(text) > 1000:
-                            text = text[:1000] + " ...[truncated]"
-                        print(f"  [result]  {text}")
-            elif isinstance(message, ResultMessage):
-                cost = message.total_cost_usd or 0.0
-                print(f"\n--- turns={message.num_turns} cost=${cost:.4f} error={message.is_error} ---")
-                storage.log_run_end("Orchestrator", run_id, message.num_turns, cost)
-                if message.is_error:
-                    print(message.result, file=sys.stderr)
-
-    print(f"\n===== DONE — cost ${cost:.4f} =====")
+    stats = await agent_runtime.run_agent("Orchestrator", options, PROMPT)
+    print(f"\n===== DONE — cost ${stats['cost']:.4f} =====")
 
 
 if __name__ == "__main__":

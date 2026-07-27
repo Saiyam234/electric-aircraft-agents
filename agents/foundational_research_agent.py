@@ -33,19 +33,10 @@ import re
 import sys
 
 import anyio
+
+import agent_runtime
 import storage
-from claude_agent_sdk import (
-    AssistantMessage,
-    ClaudeAgentOptions,
-    ClaudeSDKClient,
-    ResultMessage,
-    TextBlock,
-    ToolResultBlock,
-    ToolUseBlock,
-    UserMessage,
-    create_sdk_mcp_server,
-    tool,
-)
+from claude_agent_sdk import create_sdk_mcp_server, tool
 
 MAX_TURNS = 60
 TURN_WARNING_THRESHOLD = int(MAX_TURNS * 0.8)
@@ -188,70 +179,56 @@ async def research_topic(topic: str) -> dict:
     the run itself errored out, so the caller can decide whether to retry.
     """
     topic_tag = slugify(topic)
-    options = ClaudeAgentOptions(
-        mcp_servers={"storage": storage_server},
-        tools=["WebSearch"],  # only built-in tool this agent needs — no Bash/Read/Write/etc.
-        allowed_tools=ALLOWED_TOOLS,
-        strict_mcp_config=True,  # ignore any user/project MCP config — only the server passed above
+    options = agent_runtime.build_options(
         system_prompt=(
             "You are the Foundational Research Agent from a multi-agent electric aircraft "
             "engineering project's Knowledge Base division. You must use real web search — "
             "never fabricate sources or numbers. Be thorough but precise."
         ),
+        storage_server=storage_server,
+        allowed_tools=ALLOWED_TOOLS,
+        builtin_tools=["WebSearch"],  # the only built-in tool this agent needs
         max_turns=MAX_TURNS,
-        permission_mode="bypassPermissions",
     )
 
-    stats = {"cost": 0.0, "entries_created": 0, "entries_skipped": 0, "turns": 0, "hit_turn_limit": False}
-    approx_turns = 0
+    counts = {"entries_created": 0, "entries_skipped": 0}
     warned_long_run = False
-    run_id = storage.log_run_start("FoundationalResearchAgent")
-    async with ClaudeSDKClient(options=options) as client:
-        await client.query(build_prompt(topic, topic_tag))
-        async for message in client.receive_response():
-            if isinstance(message, AssistantMessage):
-                approx_turns += 1
-                if not warned_long_run and approx_turns >= TURN_WARNING_THRESHOLD:
-                    warned_long_run = True
-                    print(
-                        f"  [!] WARNING: topic {topic!r} is running long — "
-                        f"~{approx_turns} turns so far, approaching max_turns={MAX_TURNS}. "
-                        f"This topic may be broader than expected.",
-                        file=sys.stderr,
-                    )
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        print(block.text)
-                    elif isinstance(block, ToolUseBlock):
-                        print(f"  [calling] {block.name}({block.input})")
-            elif isinstance(message, UserMessage):
-                for block in message.content:
-                    if isinstance(block, ToolResultBlock):
-                        text = str(block.content)
-                        if "[SKIP]" in text and "already exists" in text:
-                            stats["entries_skipped"] += 1
-                        elif "Stored KB entry" in text:
-                            stats["entries_created"] += 1
-                        if len(text) > 800:
-                            text = text[:800] + " ...[truncated]"
-                        print(f"  [result]  {text}")
-            elif isinstance(message, ResultMessage):
-                stats["cost"] = message.total_cost_usd or 0.0
-                stats["turns"] = message.num_turns
-                stats["hit_turn_limit"] = message.terminal_reason == "max_turns"
-                print(
-                    f"\n--- topic={topic!r} turns={message.num_turns} "
-                    f"cost=${stats['cost']:.4f} error={message.is_error} "
-                    f"terminal_reason={message.terminal_reason} ---"
-                )
-                storage.log_run_end("FoundationalResearchAgent", run_id, message.num_turns, stats["cost"])
-                # A max_turns cutoff on a broad topic is an expected outcome, not a bug --
-                # whatever was found is already safely stored (incremental storage, above).
-                # Retrying would just re-run the same broad topic into the same ceiling
-                # again, wasting cost for no gain; only treat genuinely unexpected errors
-                # as retry-worthy.
-                if message.is_error and not stats["hit_turn_limit"]:
-                    raise RuntimeError(f"agent run for topic {topic!r} errored: {message.result}")
+
+    def count_entries(text: str) -> None:
+        """Counted from real tool results, not the agent's self-reported summary."""
+        if "[SKIP]" in text and "already exists" in text:
+            counts["entries_skipped"] += 1
+        elif "Stored KB entry" in text:
+            counts["entries_created"] += 1
+
+    def warn_if_running_long(turn: int) -> None:
+        nonlocal warned_long_run
+        if not warned_long_run and turn >= TURN_WARNING_THRESHOLD:
+            warned_long_run = True
+            print(
+                f"  [!] WARNING: topic {topic!r} is running long — "
+                f"~{turn} turns so far, approaching max_turns={MAX_TURNS}. "
+                f"This topic may be broader than expected.",
+                file=sys.stderr,
+            )
+
+    run_stats = await agent_runtime.run_agent(
+        "FoundationalResearchAgent",
+        options,
+        build_prompt(topic, topic_tag),
+        truncate=800,
+        on_tool_result=count_entries,
+        on_assistant_turn=warn_if_running_long,
+    )
+
+    stats = {**run_stats, **counts}
+    # A max_turns cutoff on a broad topic is an expected outcome, not a bug --
+    # whatever was found is already safely stored (incremental storage, above).
+    # Retrying would just re-run the same broad topic into the same ceiling
+    # again, wasting cost for no gain; only treat genuinely unexpected errors
+    # as retry-worthy.
+    if stats["is_error"] and not stats["hit_turn_limit"]:
+        raise RuntimeError(f"agent run for topic {topic!r} errored")
     return stats
 
 

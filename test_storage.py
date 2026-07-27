@@ -194,7 +194,13 @@ def test_upsert_kb_checked_rejects_duplicate(kb_entry_id):
 
 def test_upsert_kb_checked_creates_new():
     entry_id = _unique("kb-checked")
-    result = storage.upsert_kb_checked(entry_id, "pytest fact for checked upsert", {"topic": "pytest"})
-    assert result == {"status": "created", "entry_id": entry_id}
-    assert _wait_until(lambda: entry_id in storage.list_kb_ids()), f"{entry_id} not found after upsert"
-    storage.delete_kb_entries([entry_id])
+    # try/finally, not a trailing delete: this test's cleanup previously sat after
+    # its asserts, so when the Vectorize outage made those asserts fail the entries
+    # leaked into the real KB and polluted every agent's searches until KB Manager
+    # flagged them. Cleanup has to survive the failure path.
+    try:
+        result = storage.upsert_kb_checked(entry_id, "pytest fact for checked upsert", {"topic": "pytest"})
+        assert result == {"status": "created", "entry_id": entry_id}
+        assert _wait_until(lambda: entry_id in storage.list_kb_ids()), f"{entry_id} not found after upsert"
+    finally:
+        storage.delete_kb_entries([entry_id])
