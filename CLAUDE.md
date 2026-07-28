@@ -211,104 +211,105 @@ separate — a real accountability boundary, not extra headcount.
 - Local development: build and test every agent locally first, deploy
   anywhere is a decision for later.
 
-## Aircraft engineering toolchain
-Distinct from the "Tech stack" above, which is about the AGENT infrastructure
-(where agents run, where they store data). This section is about the
-software used to actually design/analyze/build the AIRCRAFT. Same
-founding-principle split applies: infrastructure/tooling is decided
-directly (like Cloudflare above); anything that touches the actual
-engineering approach is reserved for the agent system, confirmed explicitly
-by Saiyam even for a case (flight-control software platform) that could
-have plausibly been argued either way.
+## FINALIZED TOOLCHAIN — one tool per job
 
-Grounded in real research (WebSearch, cited) into what actual eVTOL/UAV
-engineering teams use — not assumptions.
+This is the decided stack, not a menu. Every line is a commitment; where a
+line says DEFERRED it is deferred on purpose and says who owns the decision.
+Grounded in real research into what enterprise aerospace teams actually run,
+then filtered to what is defensible at solo-build scale.
 
-DECIDED (infrastructure/tooling — analyzes or supports whatever the agents
-design, doesn't dictate an engineering answer):
-- CAD: Fusion 360. Confirmed realistic for startup/hobbyist eVTOL scale;
-  CATIA/NX are the real industry gold standard but only become necessary at
+Total recurring cost: effectively $0. The only paid item is eCalc (~$5
+one-off). Fusion 360 is free on a personal/education licence.
+
+### Agent system (running today)
+- Runtime: Claude Code + Claude Agent SDK (Python), local.
+- Structured storage / PLM equivalent: Cloudflare D1 — baselines,
+  requirements, audit log. This is the project's backbone in the same sense
+  Teamcenter or Windchill is at enterprise scale: one source of truth that
+  everything else references.
+- Semantic search: Cloudflare Vectorize + Workers AI (BGE embeddings).
+- File storage: Cloudflare R2 (bucket exists; subscription not yet enabled).
+- Version control: Git + GitHub.
+- Oversight: dashboard.py (Flask, localhost) — read-mostly, with the two
+  interventions CLAUDE.md reserves for Saiyam.
+
+### Geometry and CAD
+- CAD: Autodesk Fusion 360. Confirmed appropriate for startup/UAV scale;
+  CATIA and NX are the real industry standard but only justified at
   Boeing/Airbus contractor scale.
-- Aerodynamics analysis: XFLR5 (free, airfoil/wing-level) + OpenVSP (free,
-  NASA, parametric whole-aircraft geometry) — complementary, not
-  overlapping.
-- CFD, as-needed (not day-one): SimScale (free tier) — confirmed used
-  specifically for VTOL hover-to-cruise transition aerodynamics, which is
-  exactly our open problem once a VTOL architecture is chosen.
-- Structural analysis: Fusion 360's built-in Simulation workspace. No new
-  tool needed; heavier tools (Ansys/Simcenter) are enterprise-priced and
-  not justified at this scale.
-- Propulsion sizing: eCalc + APC propeller performance data — standard
-  RC-community tools for motor/prop/battery matching before buying
-  hardware.
-- Electronics, if/when a custom board becomes necessary: KiCad (free).
-- Manufacturing: Fusion 360 CAM + a slicer (Cura/PrusaSlicer, TBD by
-  printer) — fabrication method itself is still open (see below), tool
-  choice is ready whenever that's resolved.
-- Requirements tracking: the existing D1 `requirements` table (already
-  built), not an enterprise tool. Real programs use IBM DOORS/Jama
-  Connect/Polarion for this (confirmed via research), but those are
-  enterprise-licensed and unjustified for solo scale — our lightweight
-  system already covers the core need (traceable requirements linked to a
-  baseline).
-- Documentation pipeline: Pandoc (Markdown -> PDF), for Literature Agent's
-  eventual research-paper/engineering-doc deliverables.
-- Design-space optimization: OpenMDAO (NASA, open source, Python) with
-  Aviary, NASA's aircraft sizing/optimization tool built on it. Aviary
-  carries the sizing equations from GASP and FLOPS and is explicitly used
-  by college senior-design courses, NASA internally, and industry — i.e.
-  it is aimed at exactly our scale rather than being scaled-down enterprise
-  software. It is also a natural fit for this project specifically: it
-  decomposes a design problem into disciplinary components that each own
-  their own computation, which is structurally the same shape as the
-  Concurrent Engineering Cluster.
-- Propeller/rotor analysis: XROTOR (MIT, Drela) and JBLADE. This closes a
-  real gap — the project's single largest open number is hover power, which
-  is set by rotor performance, and momentum theory alone (what
-  engineering_math currently provides) gives an ideal-power floor rather
-  than a real rotor's performance. These are blade-element-momentum codes
-  that use actual airfoil polars. Published comparison found JBLADE gave
-  the best overall results against JavaProp and QPROP.
-- Flight dynamics simulation: JSBSim (flight dynamics model) driving
-  ArduPilot SITL, with FlightGear or Gazebo for visualisation. This is the
-  standard open-source stack and matters for the autonomy constraint —
-  transition control is the hardest part of a VTOL and must be exercised in
-  simulation long before any airframe exists.
-- Structural FEA: CalculiX (open source, Abaqus-input-compatible), with
-  PrePoMax as a GUI. Supports composite laminate modelling, which the
-  Airframe Engineer's spar and layup work actually needs. Fusion 360's
-  built-in Simulation stays the first-pass tool; CalculiX is the escalation
-  path when laminate-level fidelity is required.
+- Whole-aircraft parametric geometry: OpenVSP (free, NASA) — for
+  configuration-level layout that Fusion 360 is clumsy at.
 
-EVALUATED AND DELIBERATELY NOT ADOPTED (recorded so they don't get
-re-proposed as gaps):
-- CATIA, Siemens NX: the genuine industry standard for large aircraft, and
-  the right answer at Boeing/Airbus contractor scale. Not here — enterprise
-  licensing for capability this project cannot use.
-- ANSYS Fluent/Mechanical, MSC Nastran/Patran: same reasoning. SimScale's
-  free tier and CalculiX cover our actual fidelity needs.
-- Systems Tool Kit (STK): orbital mechanics and satellite mission analysis.
-  Not applicable — this is an atmospheric fixed-wing eVTOL, not a
-  spacecraft. Listed only because it appears on generic "aerospace
-  software" lists and would otherwise look like an oversight.
-- MATLAB/Simulink: genuinely the industry standard for flight-control
-  development, and a student licence is affordable. Deferred rather than
-  rejected — it belongs to the Software Engineer agent's still-open
-  flight-control platform decision (see below), not to this list.
+### Aerodynamics
+- Airfoil and wing analysis: XFLR5 (free).
+- Rotor and propeller analysis: XROTOR (free, MIT/Drela). CHOSEN over
+  JBLADE and QPROP despite one published comparison rating JBLADE best
+  overall, because XROTOR shares the XFOIL lineage that XFLR5 already sits
+  on — one airfoil-data ecosystem instead of two. If XROTOR's interface
+  proves impractical, JBLADE is the fallback, not a parallel tool.
+- CFD, only when the simpler tools genuinely cannot answer it: SimScale
+  (free tier). Specifically for hover-to-cruise transition aerodynamics.
 
-EXPLICITLY DEFERRED to the relevant future agent (not decided here, recorded
-so this isn't silently forgotten):
-- Flight-control software platform (ArduPilot vs. PX4 vs. custom) —
-  Software Engineer agent's call once it exists, via the same "propose with
-  impact assessment" pattern Systems Engineer already uses. Confirmed
-  explicitly with Saiyam: even though this is more "development platform"
-  than "physical design," it stays agent-territory rather than being
-  finalized directly.
-- Ground control station software — follows from the above.
-- SITL/HIL simulation & flight-control V&V approach — Simulation Agent's
-  call once it exists.
-- Specific VTOL architecture — already established as Concurrent
-  Engineering Cluster territory (see eVTOL hard constraint above).
+### Structures
+- First-pass FEA: Fusion 360 Simulation workspace (already owned).
+- Composite laminate FEA: CalculiX + PrePoMax (free). The escalation path
+  when laminate-level fidelity is needed, which the Airframe Engineer's spar
+  and layup work will reach.
+
+### Sizing and optimization
+- OpenMDAO + Aviary (free, NASA, pip-installable). Aviary carries the
+  GASP/FLOPS sizing equations and targets college senior-design use.
+
+### Propulsion sizing
+- eCalc (~$5) for motor/prop/battery matching, plus APC's free published
+  propeller performance data.
+
+### Flight control and autonomy
+- Platform (ArduPilot vs PX4 vs custom): DEFERRED — Software Engineer
+  agent's decision, confirmed explicitly by Saiyam. Not finalized here.
+- Simulation: JSBSim flight dynamics driving the chosen platform's SITL,
+  with FlightGear or Gazebo for visualisation. Free.
+- Ground control station: follows from the platform decision (Mission
+  Planner for ArduPilot, QGroundControl for either).
+
+### Electronics and manufacturing
+- PCB, only if a custom board becomes necessary: KiCad (free).
+- CAM: Fusion 360's built-in CAM.
+- Slicer: PrusaSlicer or Cura, determined by whichever printer is used.
+
+### Documentation
+- Pandoc (Markdown to PDF) for the Literature Agent's research papers and
+  engineering documents.
+
+### Deliberately NOT used — recorded so these stop being re-proposed
+- CATIA, Siemens NX, Creo: correct at large-airframe scale, not here.
+- ANSYS, MSC Nastran/Patran: enterprise-licensed; SimScale and CalculiX
+  cover our real fidelity needs.
+- Teamcenter, Windchill, 3DEXPERIENCE/ENOVIA: enterprise PLM. D1 plus the
+  audit log already provides the part of this that matters at our scale
+  (traceable state, versioned baselines).
+- IBM DOORS Next, Jama Connect, Polarion: enterprise requirements tools.
+  The D1 requirements table plus Systems Engineer covers the same need.
+- Cameo Systems Modeler, IBM Rhapsody: enterprise MBSE. If formal system
+  modelling is ever genuinely needed, Capella (free, open source, Thales) is
+  the pick — but nothing currently requires it.
+- Systems Tool Kit (STK): orbital mechanics. Irrelevant to an atmospheric
+  eVTOL; listed only because it appears on generic aerospace-software lists.
+- MATLAB/Simulink: DEFERRED rather than rejected — genuinely the industry
+  standard for flight-control development, and tied to the still-open
+  flight-control platform decision above.
+
+### Known gaps in this stack versus enterprise practice
+Recorded honestly rather than papered over:
+1. Change-impact propagation. When a requirement changes, nothing currently
+   tells you what breaks. This is enterprise PLM's core job and the largest
+   real gap; it is also cheap to close at our scale.
+2. Configuration control. Baselines exist, but with no locked as-designed
+   configuration and no formal change-approval path.
+3. Verification traceability (requirement -> test -> result). Blocked on the
+   V&V and Assurance Gate agents, none of which are built.
+4. Interface definitions. CLAUDE.md assigns these to the Systems Engineer;
+   that part of its role is unbuilt.
 
 ## Git workflow
 - Everything lives on `main`. Shared infrastructure (`storage.py`,
