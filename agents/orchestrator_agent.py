@@ -25,9 +25,12 @@ tools entirely.
 """
 
 import json
+import argparse
+
 import anyio
 
 import agent_runtime
+import agent_tools
 import storage
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
@@ -99,6 +102,7 @@ storage_server = create_sdk_mcp_server(
     tools=[
         get_recent_events_tool,
         list_baselines_tool,
+        agent_tools.search_kb_tool,
         log_event_tool,
         queue_decision_request_tool,
         escalate_immediately_tool,
@@ -108,12 +112,56 @@ storage_server = create_sdk_mcp_server(
 ALLOWED_TOOLS = [
     "mcp__storage__get_recent_events",
     "mcp__storage__list_baselines",
+    "mcp__storage__search_kb",
     "mcp__storage__log_event",
     "mcp__storage__queue_decision_request",
     "mcp__storage__escalate_immediately",
 ]
 
-PROMPT = """You are the Orchestrator for a multi-agent electric aircraft engineering project.
+STANDING_RULES = """You are the Orchestrator for a multi-agent electric aircraft engineering
+project. Your standing hard rule, checked against everything you do: safety issues,
+regulatory issues, and irreversible-cost issues ALWAYS surface immediately via
+escalate_immediately — never queued, never batched, no exceptions, regardless of how minor
+they might seem. Everything else (real decision forks, routine progress) goes through
+queue_decision_request instead.
+"""
+
+
+def build_directive_prompt(directive: str) -> str:
+    """Prompt for handling a real directive from Saiyam.
+
+    The module-level SELF_TEST_PROMPT below exercises all three communication
+    paths at once and was how this agent was originally verified; it is not a
+    way to actually work a directive. This is.
+    """
+    return f"""{STANDING_RULES}
+
+DIRECTIVE FROM SAIYAM:
+"{directive}"
+
+Steps:
+1. Call get_recent_events (limit 40) and list_baselines to ground yourself in real current
+   project state before deciding anything. Do not reason from assumption about where the
+   project is.
+2. Decompose the directive into concrete, specific open questions — the ones an engineering
+   or knowledge-base division would actually have to answer. Not restatements of the
+   directive. Log this via log_event with event_type="directive_decomposition".
+3. Classify the directive against the standing rule. If it genuinely falls under safety,
+   regulatory, or irreversible-cost, escalate_immediately. If it does not, do NOT escalate —
+   misusing escalation devalues it.
+4. If the directive presents a real fork that only Saiyam can settle, call
+   queue_decision_request ONCE with a SPECIFIC question and concrete, real options. Options
+   must be actionable choices with real values in them, not vague directions like
+   "investigate further". If the knowledge base holds real data relevant to the choice,
+   search it and put the actual figures into the options so Saiyam can decide from evidence
+   rather than from vibes.
+
+Then summarise: what you decomposed, what you escalated (if anything) and why, and what
+decision you queued.
+"""
+
+
+SELF_TEST_PROMPT = """You are the Orchestrator for a multi-agent electric aircraft engineering project.
 Your standing hard rule, checked against everything you do: safety issues, regulatory
 issues, and irreversible-cost issues ALWAYS surface immediately via escalate_immediately —
 never queued, never batched, no exceptions, regardless of how minor they might seem.
@@ -161,6 +209,18 @@ tell apart:
 
 
 async def main():
+    parser = argparse.ArgumentParser(description="Orchestrator — handle a directive from Saiyam")
+    parser.add_argument(
+        "--directive",
+        help="A real directive to decompose, classify and act on. Omit to run the "
+        "three-path self-test (decomposition + escalation + digest) instead.",
+    )
+    args = parser.parse_args()
+
+    prompt = build_directive_prompt(args.directive) if args.directive else SELF_TEST_PROMPT
+    if args.directive:
+        print(f'===== DIRECTIVE: {args.directive} =====\n')
+
     options = agent_runtime.build_options(
         system_prompt=(
             "You are the Orchestrator from a multi-agent electric aircraft engineering "
@@ -172,7 +232,7 @@ async def main():
         max_turns=25,
     )
 
-    stats = await agent_runtime.run_agent("Orchestrator", options, PROMPT)
+    stats = await agent_runtime.run_agent("Orchestrator", options, prompt)
     print(f"\n===== DONE — cost ${stats['cost']:.4f} =====")
 
 

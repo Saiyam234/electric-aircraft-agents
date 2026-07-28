@@ -273,15 +273,48 @@ def static_margin(neutral_point_m: float, cg_m: float, mac_m: float) -> dict:
 # ---------------------------------------------------------------------------
 
 def electrical_power_required(
-    shaft_power_w: float, propeller_efficiency: float = 0.6, motor_efficiency: float = 0.85
+    shaft_power_w: float,
+    propeller_efficiency: float = 0.6,
+    motor_efficiency: float = 0.85,
+    esc_efficiency: float = 1.0,
 ) -> dict:
-    """Shaft power grossed up through the drivetrain to what the battery must
-    actually deliver."""
-    elec = shaft_power_w / (propeller_efficiency * motor_efficiency)
+    """CRUISE electrical power: shaft power grossed up through the drivetrain.
+
+    FOR FORWARD FLIGHT ONLY. Propeller efficiency is defined as (thrust x
+    velocity) / shaft power, so it requires forward velocity and is undefined in
+    hover. Passing hover shaft power here double-counts the rotor's aerodynamic
+    losses, because hover_power's figure_of_merit already accounts for them —
+    use hover_electrical_power instead.
+
+    That is not a hypothetical: it happened. A configuration draft ran hover
+    shaft power through this function, reported 306 W instead of 187 W, and the
+    resulting energy budget appeared not to close. The error stood until the
+    Propulsion & Power Engineer caught it in review.
+    """
+    chain = propeller_efficiency * motor_efficiency * esc_efficiency
+    elec = shaft_power_w / chain
     return {
         "electrical_power_w": elec,
-        "drivetrain_efficiency": propeller_efficiency * motor_efficiency,
+        "drivetrain_efficiency": chain,
         "losses_w": elec - shaft_power_w,
+    }
+
+
+def hover_electrical_power(
+    hover_shaft_power_w: float, motor_efficiency: float = 0.85, esc_efficiency: float = 0.95
+) -> dict:
+    """HOVER electrical power: hover shaft power through motor and ESC only.
+
+    Deliberately takes no propeller-efficiency argument. In hover the rotor's
+    aerodynamic efficiency is already captured by figure_of_merit inside
+    hover_power, so the only remaining losses are electrical.
+    """
+    chain = motor_efficiency * esc_efficiency
+    elec = hover_shaft_power_w / chain
+    return {
+        "electrical_power_w": elec,
+        "electrical_chain_efficiency": chain,
+        "losses_w": elec - hover_shaft_power_w,
     }
 
 
@@ -482,8 +515,14 @@ FORMULAS: dict[str, tuple] = {
     "electrical_power_required": (
         electrical_power_required,
         ["shaft_power_w"],
-        {"propeller_efficiency": 0.6, "motor_efficiency": 0.85},
-        "Shaft power grossed up through the drivetrain to battery draw",
+        {"propeller_efficiency": 0.6, "motor_efficiency": 0.85, "esc_efficiency": 1.0},
+        "CRUISE electrical power. NOT for hover — see hover_electrical_power",
+    ),
+    "hover_electrical_power": (
+        hover_electrical_power,
+        ["hover_shaft_power_w"],
+        {"motor_efficiency": 0.85, "esc_efficiency": 0.95},
+        "HOVER electrical power (motor+ESC only; figure_of_merit already covers rotor losses)",
     ),
     "energy_for_endurance": (
         energy_for_endurance,

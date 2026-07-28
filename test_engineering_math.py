@@ -226,6 +226,35 @@ def test_electrical_power_exceeds_shaft_power():
     assert r["losses_w"] == pytest.approx(r["electrical_power_w"] - 36.8)
 
 
+def test_hover_electrical_power_does_not_double_count_rotor_losses():
+    """Regression test for a real error that reached a configuration baseline.
+
+    Hover shaft power was run through electrical_power_required, which applies
+    propeller efficiency — but hover_power's figure_of_merit already accounts
+    for the rotor's aerodynamic losses. The double count reported 306 W instead
+    of 187 W and made the energy budget appear not to close.
+    """
+    shaft = em.hover_power(2.5, 0.502655)["estimated_hover_power_w"]
+
+    wrong = em.electrical_power_required(shaft, propeller_efficiency=0.6, motor_efficiency=0.85)
+    right = em.hover_electrical_power(shaft, motor_efficiency=0.88, esc_efficiency=0.95)
+
+    assert right["electrical_power_w"] == pytest.approx(186.9, abs=1.0)
+    assert wrong["electrical_power_w"] == pytest.approx(306.4, abs=1.0)
+    # The whole point: the correct hover figure is far below the double-counted one.
+    assert right["electrical_power_w"] < wrong["electrical_power_w"] * 0.7
+
+
+def test_hover_electrical_power_takes_no_propeller_efficiency():
+    """The guard is structural: you cannot pass propeller_efficiency to the hover
+    path even by mistake, because it isn't a parameter."""
+    result = em.calculate(
+        "hover_electrical_power", {"hover_shaft_power_w": 156.27, "propeller_efficiency": 0.6}
+    )
+    assert result["ok"] is False
+    assert "unknown params" in result["error"]
+
+
 def test_battery_pack_capacity_matches_energy_and_voltage():
     r = em.battery_pack_from_energy(135.0, 4)
     assert r["nominal_voltage_v"] == pytest.approx(14.8)
