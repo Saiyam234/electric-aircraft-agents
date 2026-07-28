@@ -253,6 +253,48 @@ design, doesn't dictate an engineering answer):
   baseline).
 - Documentation pipeline: Pandoc (Markdown -> PDF), for Literature Agent's
   eventual research-paper/engineering-doc deliverables.
+- Design-space optimization: OpenMDAO (NASA, open source, Python) with
+  Aviary, NASA's aircraft sizing/optimization tool built on it. Aviary
+  carries the sizing equations from GASP and FLOPS and is explicitly used
+  by college senior-design courses, NASA internally, and industry — i.e.
+  it is aimed at exactly our scale rather than being scaled-down enterprise
+  software. It is also a natural fit for this project specifically: it
+  decomposes a design problem into disciplinary components that each own
+  their own computation, which is structurally the same shape as the
+  Concurrent Engineering Cluster.
+- Propeller/rotor analysis: XROTOR (MIT, Drela) and JBLADE. This closes a
+  real gap — the project's single largest open number is hover power, which
+  is set by rotor performance, and momentum theory alone (what
+  engineering_math currently provides) gives an ideal-power floor rather
+  than a real rotor's performance. These are blade-element-momentum codes
+  that use actual airfoil polars. Published comparison found JBLADE gave
+  the best overall results against JavaProp and QPROP.
+- Flight dynamics simulation: JSBSim (flight dynamics model) driving
+  ArduPilot SITL, with FlightGear or Gazebo for visualisation. This is the
+  standard open-source stack and matters for the autonomy constraint —
+  transition control is the hardest part of a VTOL and must be exercised in
+  simulation long before any airframe exists.
+- Structural FEA: CalculiX (open source, Abaqus-input-compatible), with
+  PrePoMax as a GUI. Supports composite laminate modelling, which the
+  Airframe Engineer's spar and layup work actually needs. Fusion 360's
+  built-in Simulation stays the first-pass tool; CalculiX is the escalation
+  path when laminate-level fidelity is required.
+
+EVALUATED AND DELIBERATELY NOT ADOPTED (recorded so they don't get
+re-proposed as gaps):
+- CATIA, Siemens NX: the genuine industry standard for large aircraft, and
+  the right answer at Boeing/Airbus contractor scale. Not here — enterprise
+  licensing for capability this project cannot use.
+- ANSYS Fluent/Mechanical, MSC Nastran/Patran: same reasoning. SimScale's
+  free tier and CalculiX cover our actual fidelity needs.
+- Systems Tool Kit (STK): orbital mechanics and satellite mission analysis.
+  Not applicable — this is an atmospheric fixed-wing eVTOL, not a
+  spacecraft. Listed only because it appears on generic "aerospace
+  software" lists and would otherwise look like an oversight.
+- MATLAB/Simulink: genuinely the industry standard for flight-control
+  development, and a student licence is affordable. Deferred rather than
+  rejected — it belongs to the Software Engineer agent's still-open
+  flight-control platform decision (see below), not to this list.
 
 EXPLICITLY DEFERRED to the relevant future agent (not decided here, recorded
 so this isn't silently forgotten):
