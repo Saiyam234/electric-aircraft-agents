@@ -16,8 +16,17 @@ the solution.
   never defaulted toward a reference aircraft just because it's familiar.
 
 ## Current hard constraints
-- Scale: 1:8 — the real, true target size of the aircraft. Modeled in Fusion
-  360 at 1:1 / true dimensions of this scale. No "scale down" step in CAD.
+- Scale: 1:8 — DECIDED 2026-07-29 (D1 event 117, answering decision_request
+  event 84). "1:8" is descriptive shorthand for the size class only, NOT a
+  derivation from any specific full-scale reference aircraft. The hard
+  number is an absolute target wingspan of 1.40 m, chosen directly rather
+  than derived from a ratio — Saiyam explicitly rejected anchoring to a real
+  aircraft (options A/B/D/E, real eVTOL/CTOL precedents from Foundational
+  Research Agent's KB research) because doing so would prejudge details the
+  founding principle reserves for the cluster; option C (Vahana) was
+  additionally rejected for outright anchoring tiltwing architecture. Modeled
+  in Fusion 360 at 1:1 / true dimensions of this scale. No "scale down" step
+  in CAD.
 - Propulsion: electric
 - Takeoff/landing: DECIDED — eVTOL (vertical takeoff and landing). This is a
   capability requirement, the same tier as propulsion and flight autonomy
@@ -343,16 +352,17 @@ Recorded honestly rather than papered over:
    access. Two topics researched so far with real, cited sources.
 4. 2-3 more individual agents, each tested alone — DONE: KB Manager and
    Orchestrator, both tested against real (not fabricated) project data.
-5. THEN orchestration/handoff logic between agents — CURRENT STEP, IN
-   PROGRESS. A real handoff test (Orchestrator decomposes a directive into
-   a specific question -> that exact question passed to Foundational
-   Research Agent -> result verified landed in the KB) has been attempted
-   and paused twice (once interrupted mid-setup, once explicitly deferred
-   by Saiyam pending agent hardening) — not yet actually completed.
-6. THEN a hand-run dry-run of the full lifecycle with fake data. May be
-   worth revisiting once step 5 lands and KB coverage broadens — real runs
-   have proven cheap and fast enough that a fake-data rehearsal may add
-   less than just doing a real one with 1-2 more agents.
+5. THEN orchestration/handoff logic between agents — DONE, for real, twice
+   over. Orchestrator decomposed the "resolve the 1:8 scale basis" directive
+   into a queued `decision_request` (event 84) fed by Foundational Research
+   Agent's real reference-aircraft research (event 74, 17 KB entries), and
+   separately drove the full Wave 1 -> Wave 2 sequence: requirements ->
+   configuration (baseline 89) -> Airframe/Propulsion review -> Chief
+   Integration adjudication, with agents reading each other's real output
+   from D1, not fabricated handoffs.
+6. Fake-data dry-run — SKIPPED, deliberately. Real runs (Wave 1 and Wave 2)
+   turned out cheap and fast enough that rehearsing with fake data added
+   nothing; every step so far has real Cloudflare-backed output instead.
 
 ## Agent build waves — how the remaining roster gets built
 The 19 fixed agents are NOT built all at once. Most of them have nothing real
@@ -364,23 +374,114 @@ data before being trusted.
 
 - BUILT: Orchestrator, Foundational Research Agent, KB Manager (all verified
   against real data).
-- WAVE 1 — BUILT, NOT YET RUN: Systems Engineer, Configuration Synthesis
-  Lead, Math & Physics Engine. These work on data that already exists (KB
-  entries, requirements table, hard constraints) and form a real loop:
-  requirements -> configuration -> numerical validation.
-- WAVE 2 (needs a real configuration to exist first): Airframe Engineer,
-  Propulsion & Power Engineer, Chief Integration Agent, Innovation Validator.
-- WAVE 3 (needs a converged spec): Software Engineer, Design Realization
-  Agent, Simulation Agent.
+- WAVE 1 — BUILT AND RUN FOR REAL. Systems Engineer, Configuration Synthesis
+  Lead, Math & Physics Engine ran the full requirements -> configuration ->
+  numerical validation loop against real KB/D1 data. Produced baseline 88
+  (v0.1-config-draft, 1.40 m span, MTOW 2.5 kg) and then baseline 89
+  (`v0.1-config-draft-1785188637`, architecture-agnostic sizing envelope,
+  1.25 m span / 0.231 m² wing / MTOW 2.5 kg / wing loading 10.8 kg/m²),
+  plus requirements #21-32. Baseline 89 deliberately left VTOL architecture
+  and the 1:8 scale reference unresolved (see "Still open" below) rather
+  than defaulting either.
+- WAVE 2 — BUILT AND RUN FOR REAL, except Innovation Validator (still
+  unbuilt). Airframe Engineer, Propulsion & Power Engineer, and Chief
+  Integration Agent all ran against baseline 89:
+  - Airframe Engineer locked airfoil (SD7003, CL_max 1.0), recomputed
+    CD0/V_stall, and filed a structural objection: the spar check's 600 MPa
+    allowable had no hand-layup knockdown factor at n=3.8 (event 91).
+  - Propulsion & Power Engineer found and fixed a real bug: hover electrical
+    power had been computed via `electrical_power_required()`, which applies
+    a `propeller_efficiency` term that is undefined in hover (thrust x
+    velocity / power, and velocity=0 at hover) and already double-counted by
+    figure_of_merit. This inflated hover power to 306.4 W instead of the
+    correct ~187 W and wrongly implied the mission energy budget didn't
+    close. Root-caused, hand-verified independently (not taken on the
+    agent's word), and fixed structurally by adding
+    `hover_electrical_power()` to engineering_math.py with no
+    `propeller_efficiency` parameter, so the mistake can't recur by
+    construction. With the fix: the energy loop CLOSES at MTOW 2.5 kg with
+    4x0.40 m rotors, no mass spiral (event 96/99).
+  - Chief Integration Agent read both proposals from shared D1 state
+    (`get_proposals` tool) in a single prompt and adjudicated: 7 ACCEPT, 2
+    MODIFY, 0 REJECT. See "Still open" / Part 3 note below on how this
+    adjudication actually happened.
+  - Innovation Validator — BUILT AND RUN FOR REAL 2026-07-31, closing out
+    Wave 2. Real self-test (no dynamic Innovation field agents exist yet, so
+    it validated a real finding already sitting inside baseline 89's own
+    hover_power_bracket rather than a fabricated candidate): independently
+    re-derived hover power at 4x0.40m vs 4x0.55m rotors via calculate()
+    (193.5W -> 140.7W electrical, ~27% reduction; mission hover-energy share
+    35% -> 19.9%), cross-checked real KB evidence (Grokipedia, Krossblade,
+    MDPI Aerospace) and all approved requirements (21-32, 42) for conflicts
+    (found none). Verdict: NEEDS_MORE_RESEARCH, not PROVEN — correctly
+    recognized the energy case is closed but the airframe-integration cost
+    (arm span vs. wingspan, prop-wing download, tilt-mechanism sizing) is
+    Airframe Engineer's call, not its own. Real structural validation: PROVEN
+    verdicts are rejected by the tool itself unless kb_evidence AND
+    math_check are both non-empty.
+- WAVE 3 — BUILT AND RUN FOR REAL 2026-07-31. Software Engineer, Design
+  Realization Agent, and Simulation Agent all ran against baseline 89:
+  - Simulation Agent independently re-derived the Concurrent Engineering
+    Cluster's own Wave 2 adjudicated corrections from scratch via
+    calculate() — not trusted from either baseline 89's stale stored config
+    (which still shows the pre-review CL_max=1.1/V_stall=12.55) or from
+    Airframe Engineer's review text. All three CONFIRMED: V_stall 13.163 m/s
+    (vs. claimed 13.16), root bending moment 13.006 N*m (vs. 13.01), spar
+    stress 46.45 MPa / safety factor 8.61 (vs. ~46.45 / ~8.6). This run
+    surfaced a real bug in engineering_math.calculate(): its rounding used a
+    fixed `round(x, 6)`, which silently zeroed out the real 1.96e-9 m^4
+    second-moment-of-area result (legitimately tiny in SI units). The model
+    then used the correct value in its next call anyway — i.e. it did the
+    arithmetic itself and got lucky, the exact failure mode this module
+    exists to prevent. Fixed structurally: `calculate()` now rounds to 6
+    significant figures, not 6 decimal places, with a regression test
+    (`test_calculate_does_not_zero_out_small_si_results`) asserting a small
+    real result is never silently zeroed. Full suite: 43/43 passing.
+    Software verification (unit-testing flight-controller code) explicitly
+    NOT attempted — no such code or spec exists yet; logged as such rather
+    than faked.
+  - Software Engineer proposed the architecture-agnostic half of the flight
+    stack: EKF-based state estimation (ArduPilot/PX4-class), cruise
+    waypoint control (L1 + TECS, tied to baseline 89's real 18 m/s cruise
+    and 12.55 m/s stall), a concrete EMI mitigation plan for requirement 31
+    (antenna separation, phase-wire routing, ferrites, EKF innovation
+    gating, a mandatory pre-hover motors-spinning EMI test), and GPS/IMU/
+    telemetry-loss failsafes for requirement 30 (GPS-loss dead-reckon at a
+    real calculate()-derived best-glide speed of 15.58 m/s). Correctly
+    refused to design hover-phase or transition control, since VTOL
+    architecture is still unselected. Raised a real objection: requirement
+    30 cannot be fully closed at this baseline and should be split into a
+    closable cruise-phase half and an architecture-blocked hover/transition
+    half.
+  - Design Realization Agent generated a real, syntactically valid Fusion
+    360 Python API script (`fusion_scripts/wing_planform.py`, verified with
+    `ast.parse`) for the wing planform only, using baseline 89's real
+    stored dimensions (span 1.25 m, root/tip chord, MAC, AR). Did NOT
+    silently rescale to the decided 1.40 m target itself (that is
+    Configuration Synthesis Lead's job, not its own) — the script's header
+    carries an unmissable flag that the span is stale and the script must
+    be regenerated once baseline 89 is corrected. Full-aircraft geometry is
+    explicitly out of scope pending VTOL architecture selection.
+  - Real cost across all four Wave 3 runs (including Innovation Validator):
+    $2.0136, 47 turns total, 0 errors, 0 turn-limit hits.
 - WAVE 4 (needs a complete design/baseline): Review & Critic, Safety & Risk,
   Regulatory, Manufacturing Manager, Literature Agent, Physical Testing Agent.
+  Not started — most genuinely need a converged spec (VTOL architecture
+  selected, baseline re-derived to 1.40 m) that does not exist yet, unlike
+  Wave 3 which had real partial data to work against.
 
-Cluster messaging is deliberately unbuilt. CLAUDE.md describes the Concurrent
-Engineering Cluster as "one continuously-messaging team," which the current
-one-script-one-conversation pattern doesn't provide. Wave 1's three agents run
-sequentially and don't need it; building a multi-round cluster driver now
-would mean designing against imagined requirements. Revisit at Wave 2, when
-there are genuinely competing voices to arbitrate.
+Cluster messaging: CLAUDE.md's stated trigger for building it ("genuinely
+competing voices to arbitrate") has now technically been met — Wave 2 produced
+a real disagreement (Airframe's structural objection vs. Propulsion & Power's
+proposal). Confirmed directly: this was NOT live back-and-forth between
+running agent instances. It was one script invoking three separate CLI
+processes sequentially, with Chief Integration reading both prior agents'
+proposals out of shared D1 state (`get_proposals`) into a single prompt.
+That's sequential-script-plus-shared-state, not messaging. Recorded here as a
+deliberate decision, not something that slid past: real cluster messaging
+(agents exchanging messages mid-run, multi-round, with an escalation path
+after 3 unresolved rounds) is still NOT built. Whether to build it now is
+still open — not decided by this note.
 
 ## Explicitly deferred (revisit later, don't rebuild from scratch)
 - Agent-sprawl pruning policy for retired dynamic agents
@@ -390,6 +491,23 @@ there are genuinely competing voices to arbitrate.
   milestone, not a decision to make right now
 
 ## Still open — do not assume resolved
+- Baseline 89 needs revision now that the 1:8 basis is decided (see "Scale:
+  1:8" above). Baseline 89's wingspan (1.25 m) was derived from a "notional
+  ~10 m GA-class reference... NOT a commitment" placeholder; the decided
+  target is 1.40 m (a ~12% increase), which propagates: wing area, aspect
+  ratio, wing loading, stall speed, Reynolds number, cruise power, the hover
+  power bracket, and mission energy all derive from span in baseline 89's
+  config. NOT yet re-derived — this needs a real Configuration Synthesis
+  Lead + Math & Physics Engine run against the new 1.40 m target (a new
+  agent spend), not a hand-patch of baseline 89's numbers, to keep the
+  no-arithmetic-by-hand discipline. Flagged, not started.
+- Real cluster messaging (agents exchanging messages mid-run, multi-round,
+  auto-escalation after 3 unresolved rounds) — NOT built. Its stated trigger
+  ("genuinely competing voices to arbitrate") was met in Wave 2 (Airframe's
+  structural objection vs. Propulsion & Power's proposal), but Chief
+  Integration resolved it via sequential script + shared D1 state read into
+  one prompt, not live messaging. Whether to build real messaging now is an
+  open decision, not yet made either way.
 - Human override / kill-switch capability
 - R2 subscription — bucket exists, but not unlocked (needs a card on file);
   not currently blocking anything since R2 isn't needed yet

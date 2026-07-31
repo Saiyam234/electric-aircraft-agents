@@ -353,8 +353,20 @@ def log_run_start(agent: str) -> str:
     return run_id
 
 
-def log_run_end(agent: str, run_id: str, turns: int, cost: float) -> None:
-    log_event(agent, "agent_end", f"run_id={run_id} turns={turns} cost=${cost:.4f}")
+def log_run_end(
+    agent: str,
+    run_id: str,
+    turns: int,
+    cost: float,
+    is_error: bool = False,
+    hit_turn_limit: bool = False,
+) -> None:
+    log_event(
+        agent,
+        "agent_end",
+        f"run_id={run_id} turns={turns} cost=${cost:.4f} "
+        f"is_error={is_error} hit_turn_limit={hit_turn_limit}",
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -283,6 +283,20 @@ def test_calculate_dispatches_valid_call():
     assert r["result"]["wing_loading_n_m2"] == pytest.approx(70.05, abs=0.1)
 
 
+def test_calculate_does_not_zero_out_small_si_results():
+    """Regression test: a fixed round(x, 6) silently zeroed out real small
+    SI-unit results (moments of area routinely ~1e-9 m^4), and during
+    Simulation Agent's first real verified run the model quietly substituted
+    the correct-looking value into its next tool call instead of reading it
+    from a tool result that said 0.0 — exactly the "mental arithmetic that
+    happened to be right" failure mode this module exists to prevent.
+    calculate() must round by significant figures, not decimal places."""
+    r = em.calculate("spar_cap_second_moment", {"cap_area_m2": 2e-5, "cap_separation_m": 0.014})
+    assert r["ok"] is True
+    assert r["result"]["second_moment_m4"] == pytest.approx(1.96e-9, rel=1e-3)
+    assert r["result"]["second_moment_m4"] != 0.0
+
+
 @pytest.mark.parametrize(
     "formula,params,expected_fragment",
     [

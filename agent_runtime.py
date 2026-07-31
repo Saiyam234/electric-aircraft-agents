@@ -125,7 +125,14 @@ async def run_agent(
                     f"\n--- {agent_name}: turns={message.num_turns} cost=${stats['cost']:.4f} "
                     f"error={message.is_error} terminal_reason={message.terminal_reason} ---"
                 )
-                storage.log_run_end(agent_name, run_id, message.num_turns, stats["cost"])
+                storage.log_run_end(
+                    agent_name,
+                    run_id,
+                    message.num_turns,
+                    stats["cost"],
+                    is_error=stats["is_error"],
+                    hit_turn_limit=stats["hit_turn_limit"],
+                )
                 if message.is_error:
                     print(message.result, file=sys.stderr)
 

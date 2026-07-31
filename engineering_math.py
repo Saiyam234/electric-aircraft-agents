@@ -626,5 +626,23 @@ def calculate(formula: str, params: dict) -> dict:
     except (ValueError, ZeroDivisionError, OverflowError) as exc:
         return {"ok": False, "error": f"{formula} failed: {exc}"}
 
-    rounded = {k: (round(v, 6) if isinstance(v, float) else v) for k, v in result.items()}
+    rounded = {k: (_round_sig(v, 6) if isinstance(v, float) else v) for k, v in result.items()}
     return {"ok": True, "result": rounded}
+
+
+def _round_sig(x: float, sig: int) -> float:
+    """Round to `sig` significant figures, not decimal places.
+
+    A plain round(x, 6) silently zeros out any legitimately small SI-unit
+    result — moments of area in m^4 are routinely ~1e-9, well under a fixed
+    6-decimal-place cutoff. That happened for real: spar_cap_second_moment
+    returned 0.0 for a real 1.96e-9 m^4 result during Simulation Agent's
+    first verified run, and the agent silently substituted the (correct, by
+    luck) right-looking value in its next tool call instead of reading it
+    from the tool — the exact "mental arithmetic that happened to be right"
+    failure mode this module exists to make impossible.
+    """
+    if x == 0 or math.isnan(x) or math.isinf(x):
+        return x
+    digits = sig - 1 - math.floor(math.log10(abs(x)))
+    return round(x, int(digits))
