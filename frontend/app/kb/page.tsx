@@ -6,6 +6,7 @@ import { Search } from "lucide-react";
 import { api } from "@/lib/api";
 import type { KbEntry } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 
 const ease = [0.16, 1, 0.3, 1] as const;
 
@@ -54,11 +55,11 @@ export default function KnowledgeBasePage() {
 
       <div className="relative mb-7 max-w-md">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-        <input
+        <Input
           value={query}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Search the knowledge base…"
-          className="w-full rounded-md border border-border bg-background py-2 pl-8 pr-3 text-[length:var(--text-sm)] outline-none transition-colors focus:border-brand focus:ring-[3px] focus:ring-brand-soft"
+          className="pl-8"
         />
       </div>
 

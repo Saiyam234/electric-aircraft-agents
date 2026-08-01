@@ -93,3 +93,28 @@ export interface LogEvent {
   timestamp: string;
   description: string;
 }
+
+export type RunMode = "directive" | "topic" | "innovation" | "none";
+
+export interface RunnableAgent {
+  agent: string;
+  mode: RunMode;
+  run_count: number;
+  avg_cost: number | null;
+  min_cost: number | null;
+  max_cost: number | null;
+}
+
+export interface RunJob {
+  id: string;
+  agent: string;
+  module: string;
+  mode: RunMode;
+  input: string | null;
+  status: "running" | "done" | "error";
+  output: string[];
+  started_at: number;
+  finished_at: number | null;
+  exit_code: number | null;
+  pid: number | null;
+}

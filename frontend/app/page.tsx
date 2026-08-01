@@ -87,22 +87,22 @@ export default function OverviewPage() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.08, ease }}
-        className="hairline-grid my-8 grid-cols-1 md:grid-cols-[1.7fr_1fr]"
+        className="hairline-grid my-6 grid-cols-1 md:grid-cols-[1.7fr_1fr]"
       >
-        <div className="flex flex-col bg-card px-7 pb-6 pt-7 md:px-8">
-          <span className="text-[length:var(--text-2xs)] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        <div className="flex flex-col bg-card px-5 pb-4 pt-5">
+          <span className="text-[length:var(--text-2xs)] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
             Total spend
           </span>
           <AnimatedNumber
             value={data.total_cost}
             prefix="$"
             decimals={2}
-            className="mt-2.5 font-mono text-[length:var(--text-display)] font-semibold leading-none tracking-[-0.03em]"
+            className="tabular mt-1.5 font-mono text-[length:var(--text-display)] font-semibold leading-none tracking-[-0.02em]"
           />
-          <div className="mb-1 mt-5">
+          <div className="mb-1 mt-4">
             <Sparkline values={data.spend_series} />
           </div>
-          <p className="mt-auto pt-5 text-[length:var(--text-xs)] text-muted-foreground">
+          <p className="mt-auto pt-3 text-[length:var(--text-xs)] text-muted-foreground">
             ${data.recent_cost_7d.toFixed(2)} in the last 7 days · {data.recent_runs_7d} of{" "}
             {data.total_runs} runs
           </p>
@@ -125,19 +125,23 @@ export default function OverviewPage() {
         {data.escalations.length === 0 ? (
           <EmptyState text="None. Safety, regulatory and irreversible-cost issues appear here the moment they are raised." />
         ) : (
-          <div className="space-y-px">
+          <div className="space-y-2">
             {data.escalations.map((e, i) => (
               <motion.div
                 key={i}
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: i * 0.04, ease }}
-                className="border-l-2 border-destructive bg-card py-3.5 pl-4"
+                className="rounded-lg border border-l-[3px] border-border border-l-destructive bg-card p-4 shadow-sm"
               >
-                <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[length:var(--text-2xs)] text-muted-foreground">
-                  <span className="font-medium text-destructive">Escalation</span>
-                  <span>{e.agent}</span>
-                  <span>{e.timestamp.slice(0, 19)}</span>
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-destructive-soft px-2 py-0.5 text-[length:var(--text-2xs)] font-semibold uppercase tracking-[0.04em] text-destructive">
+                    Escalation
+                  </span>
+                  <span className="text-[length:var(--text-2xs)] text-muted-foreground">{e.agent}</span>
+                  <span className="font-mono text-[length:var(--text-2xs)] text-muted-foreground/80">
+                    {e.timestamp.slice(0, 19).replace("T", " ")}
+                  </span>
                 </div>
                 <p className="text-[length:var(--text-base)] leading-[1.6]">{e.description}</p>
               </motion.div>
@@ -152,11 +156,15 @@ export default function OverviewPage() {
         ) : (
           <Link
             href="/decisions"
-            className="flex items-center justify-between border-l-2 border-brand bg-card py-3.5 pl-4 pr-4 transition-colors hover:bg-accent/40"
+            className="flex items-center justify-between rounded-lg border border-l-[3px] border-border border-l-brand bg-card p-4 shadow-sm transition-colors hover:bg-accent/30"
           >
-            <span className="text-[length:var(--text-base)] font-medium">
-              {data.open_decisions_count} decision{data.open_decisions_count === 1 ? "" : "s"}{" "}
-              queued
+            <span className="flex items-center gap-2">
+              <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[length:var(--text-2xs)] font-semibold uppercase tracking-[0.04em] text-brand">
+                Decision
+              </span>
+              <span className="text-[length:var(--text-base)] font-medium">
+                {data.open_decisions_count} decision{data.open_decisions_count === 1 ? "" : "s"} queued
+              </span>
             </span>
             <span className="text-[length:var(--text-xs)] text-muted-foreground">View →</span>
           </Link>
@@ -178,13 +186,13 @@ function StatRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-border px-6 py-[18px] transition-colors last:border-b-0 hover:bg-accent/30">
+    <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3.5 transition-colors last:border-b-0 hover:bg-accent/30">
       <div className="flex flex-col gap-1">
         <span className="text-[length:var(--text-xs)] text-muted-foreground">{label}</span>
-        {sub && <span className="font-mono text-[length:var(--text-2xs)] text-muted-foreground">{sub}</span>}
+        {sub && <span className="tabular font-mono text-[length:var(--text-2xs)] text-muted-foreground">{sub}</span>}
       </div>
       <span
-        className={`font-mono text-[length:var(--text-lg)] font-semibold tracking-[-0.01em] ${accent ? "text-brand" : ""}`}
+        className={`tabular font-mono text-[length:var(--text-lg)] font-semibold tracking-[-0.01em] ${accent ? "text-brand" : ""}`}
       >
         {children}
       </span>

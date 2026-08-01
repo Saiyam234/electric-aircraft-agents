@@ -6,6 +6,8 @@ import type {
   Overview,
   RequirementsResponse,
   RosterAgent,
+  RunJob,
+  RunnableAgent,
 } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:5001";
@@ -43,4 +45,8 @@ export const api = {
   baselines: () => get<Baseline[]>("/api/baselines"),
   kb: (q: string) => get<KbEntry[]>(`/api/kb?q=${encodeURIComponent(q)}`),
   logs: (limit = 150) => get<LogEvent[]>(`/api/logs?limit=${limit}`),
+  runnableAgents: () => get<RunnableAgent[]>("/api/agents/runnable"),
+  startRun: (agent: string, input: string | null) =>
+    post<{ job_id: string }>("/api/agents/run", { agent, input }),
+  getRun: (jobId: string) => get<RunJob>(`/api/agents/run/${jobId}`),
 };

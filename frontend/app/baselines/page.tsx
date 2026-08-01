@@ -33,26 +33,26 @@ export default function BaselinesPage() {
       <div className="mb-8">
         <h1 className="text-[length:var(--text-xl)] font-semibold tracking-[-0.02em]">Baselines</h1>
         <p className="mt-1.5 text-[length:var(--text-sm)] text-muted-foreground">
-          No baseline can be stamped until all three Assurance Gate agents exist and sign off —
-          none are built yet.
+          All three Assurance Gate offices exist now, but none has signed off on a baseline yet —
+          the current one is still pending re-derivation to the decided 1.40 m span.
         </p>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-sm">
         <table className="w-full text-[length:var(--text-sm)]">
           <thead>
             <tr className="border-b border-border text-left text-[length:var(--text-2xs)] uppercase tracking-[0.06em] text-muted-foreground">
-              <th className="pb-3 pr-4 font-medium">ID</th>
-              <th className="pb-3 pr-4 font-medium">Version</th>
-              <th className="pb-3 pr-4 font-medium">Status</th>
-              <th className="pb-3 pr-4 font-medium">Assurance</th>
-              <th className="pb-3 font-medium">Created</th>
+              <th className="py-3 pr-4 pl-5 font-medium">ID</th>
+              <th className="py-3 pr-4 font-medium">Version</th>
+              <th className="py-3 pr-4 font-medium">Status</th>
+              <th className="py-3 pr-4 font-medium">Assurance</th>
+              <th className="py-3 pr-5 font-medium">Created</th>
             </tr>
           </thead>
           <tbody>
             {visible.map((b) => (
-              <tr key={b.id} className="border-b border-border last:border-b-0">
-                <td className="py-3 pr-4 font-mono text-muted-foreground">{b.id}</td>
+              <tr key={b.id} className="border-b border-border transition-colors last:border-b-0 hover:bg-accent/30">
+                <td className="py-3 pr-4 pl-5 font-mono text-muted-foreground">{b.id}</td>
                 <td className="py-3 pr-4 font-mono">{b.version}</td>
                 <td className="py-3 pr-4 capitalize">{b.status}</td>
                 <td className="py-3 pr-4">
@@ -62,7 +62,7 @@ export default function BaselinesPage() {
                     <span className="text-muted-foreground">0 of 3 offices</span>
                   )}
                 </td>
-                <td className="py-3 text-muted-foreground">{b.created_at.slice(0, 19)}</td>
+                <td className="py-3 pr-5 text-muted-foreground">{b.created_at.slice(0, 19)}</td>
               </tr>
             ))}
           </tbody>

@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { Decision } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useCountsRefresh } from "@/lib/counts-context";
 import { usePageSearch } from "@/lib/search-context";
 import { CircleHelp } from "lucide-react";
@@ -79,7 +81,7 @@ export default function DecisionsPage() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, height: 0, marginBottom: 0 }}
                 transition={{ duration: 0.3, delay: i * 0.03, ease }}
-                className="border-l-2 border-brand bg-card py-5 pl-5 pr-5"
+                className="rounded-lg border border-l-[3px] border-border border-l-brand bg-card p-5 shadow-sm"
               >
                 <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[length:var(--text-2xs)] text-muted-foreground">
                   <span>{d.agent}</span>
@@ -115,21 +117,20 @@ export default function DecisionsPage() {
                   }}
                   className="mt-4 flex flex-wrap gap-2"
                 >
-                  <input
+                  <Input
                     value={drafts[d.question] ?? ""}
                     onChange={(e) =>
                       setDrafts((prev) => ({ ...prev, [d.question]: e.target.value }))
                     }
                     placeholder='Your decision — e.g. "Option F: set 1.40 m absolute"'
-                    className="min-w-[260px] flex-1 rounded-md border border-border bg-background px-3 py-2 text-[length:var(--text-sm)] outline-none transition-colors focus:border-brand focus:ring-[3px] focus:ring-brand-soft"
+                    className="min-w-[260px] flex-1"
                   />
-                  <button
+                  <Button
                     type="submit"
                     disabled={submitting === d.question || !(drafts[d.question] ?? "").trim()}
-                    className="rounded-md bg-foreground px-4 py-2 text-[length:var(--text-sm)] font-medium text-background transition-opacity hover:opacity-85 disabled:opacity-40"
                   >
                     {submitting === d.question ? "Saving…" : "Submit"}
-                  </button>
+                  </Button>
                 </form>
               </motion.div>
             ))}

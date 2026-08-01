@@ -231,13 +231,26 @@ export function AgentGraph({ roster }: { roster: RosterAgent[] }) {
         </g>
       </svg>
 
+      <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-1.5">
+        {Object.entries(DIVISION_COLOR).map(([division, color]) => (
+          <div key={division} className="flex items-center gap-1.5 text-[length:var(--text-2xs)] text-muted-foreground">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: color }} />
+            {division}
+          </div>
+        ))}
+      </div>
+
+      <div className="pointer-events-none absolute right-4 top-4 text-[length:var(--text-2xs)] text-muted-foreground">
+        Edges are the intended pipeline per CLAUDE.md — not live messaging
+      </div>
+
       {selected && (
         <div className="absolute bottom-4 left-4 w-80 rounded-lg border border-border bg-popover p-4 shadow-lg">
           <div className="mb-1 flex items-start justify-between gap-2">
             <span className="text-[length:var(--text-base)] font-semibold">{selected.id}</span>
             <button
               onClick={() => setSelected(null)}
-              className="text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground transition-colors hover:text-foreground"
               aria-label="Close"
             >
               ×
@@ -259,10 +272,6 @@ export function AgentGraph({ roster }: { roster: RosterAgent[] }) {
           )}
         </div>
       )}
-
-      <div className="pointer-events-none absolute right-4 top-4 text-[length:var(--text-2xs)] text-muted-foreground">
-        Edges are the intended pipeline per CLAUDE.md — not live messaging
-      </div>
     </div>
   );
 }

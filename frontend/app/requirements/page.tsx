@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { RequirementsResponse } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { useCountsRefresh } from "@/lib/counts-context";
 import { usePageSearch } from "@/lib/search-context";
 import { ClipboardCheck } from "lucide-react";
@@ -77,7 +78,7 @@ export default function RequirementsPage() {
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([status, n]) => (
             <div key={status}>
-              <div className="font-mono text-[length:var(--text-xl)] font-semibold tracking-[-0.02em]">
+              <div className="tabular font-mono text-[length:var(--text-xl)] font-semibold tracking-[-0.02em]">
                 {n}
               </div>
               <div className="mt-1 text-[length:var(--text-2xs)] capitalize text-muted-foreground">
@@ -93,7 +94,7 @@ export default function RequirementsPage() {
           <p className="text-[length:var(--text-xs)] text-muted-foreground">None pending.</p>
         </div>
       ) : (
-        <div className="space-y-px">
+        <div className="space-y-2">
           <AnimatePresence initial={false}>
             {visible.map((r, i) => (
               <motion.div
@@ -102,7 +103,7 @@ export default function RequirementsPage() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, height: 0, marginBottom: 0 }}
                 transition={{ duration: 0.3, delay: i * 0.03, ease }}
-                className="border-l-2 border-transparent bg-card py-4 pl-4 pr-4 transition-colors hover:border-border"
+                className="rounded-lg border border-border bg-card p-4 shadow-sm transition-colors"
               >
                 <div className="mb-1.5 flex items-center gap-2 text-[length:var(--text-2xs)] text-muted-foreground">
                   <span className="font-mono">#{r.id}</span>
@@ -116,20 +117,22 @@ export default function RequirementsPage() {
                   </p>
                 )}
                 <div className="mt-3.5 flex gap-2">
-                  <button
+                  <Button
+                    variant="success"
+                    size="sm"
                     onClick={() => decide(r.id, "approved")}
                     disabled={pending === r.id}
-                    className="rounded-md bg-success px-3.5 py-1.5 text-[length:var(--text-xs)] font-medium text-white transition-opacity hover:opacity-85 disabled:opacity-40"
                   >
                     Approve
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
                     onClick={() => decide(r.id, "rejected")}
                     disabled={pending === r.id}
-                    className="rounded-md border border-border px-3.5 py-1.5 text-[length:var(--text-xs)] font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-40"
                   >
                     Reject
-                  </button>
+                  </Button>
                 </div>
               </motion.div>
             ))}

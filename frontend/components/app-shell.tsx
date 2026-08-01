@@ -78,7 +78,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         />
         <CountsContext.Provider value={{ refresh }}>
           <SearchContext.Provider value={search}>
-            <main className="mx-auto w-full max-w-[1360px] flex-1 px-5 py-7 md:px-8">
+            <main className="mx-auto w-full max-w-[1360px] flex-1 px-5 py-6 md:px-7">
               {children}
             </main>
           </SearchContext.Provider>
