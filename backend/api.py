@@ -13,11 +13,12 @@ The Next.js frontend (frontend/) talks to this over fetch() + CORS.
 """
 
 import os
+import secrets
 import sys
 from collections import Counter
 from datetime import datetime
 
-from flask import Flask, jsonify, request
+from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -25,9 +26,47 @@ import storage  # noqa: E402
 import run_console  # noqa: E402
 
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+CORS(
+    app,
+    resources={r"/api/*": {"origins": "*"}},
+    allow_headers=["Content-Type", "Authorization"],
+)
 
 URGENT_EVENTS = {"escalation"}
+
+# Real data + real agent dispatch behind a single shared password, since this
+# is a solo-owner tool, not a multi-user product. Unset locally (127.0.0.1
+# is already private) — set both on Railway/prod or every route here is
+# public to anyone with the link. Loud startup warning rather than a silent
+# open door, since forgetting this is the realistic failure mode.
+DASHBOARD_USER = os.environ.get("DASHBOARD_USER")
+DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD")
+if not DASHBOARD_USER or not DASHBOARD_PASSWORD:
+    print(
+        "WARNING: DASHBOARD_USER/DASHBOARD_PASSWORD not set — every /api/* "
+        "route is unauthenticated. Fine for local dev, not fine deployed."
+    )
+
+
+@app.before_request
+def _require_dashboard_auth():
+    if not DASHBOARD_USER or not DASHBOARD_PASSWORD:
+        return None
+    if request.method == "OPTIONS":
+        return None  # CORS preflight — no credentials sent by the browser
+    auth = request.authorization
+    ok = (
+        auth is not None
+        and secrets.compare_digest(auth.username or "", DASHBOARD_USER)
+        and secrets.compare_digest(auth.password or "", DASHBOARD_PASSWORD)
+    )
+    if not ok:
+        return Response(
+            "Authentication required",
+            401,
+            {"WWW-Authenticate": 'Basic realm="Electric Aircraft"'},
+        )
+    return None
 
 # The 19 fixed agents per CLAUDE.md's roster (division, display name, script
 # filename under agents/ or None if unbuilt, AGENT_NAME string in the audit

@@ -12,8 +12,23 @@ import type {
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:5001";
 
+// Same shared credential as proxy.ts / backend/api.py's DASHBOARD_USER +
+// DASHBOARD_PASSWORD. Safe to bake into the client bundle here specifically
+// because proxy.ts gates every request to this app (including the bundle
+// itself) behind that same password first — nobody who hasn't already
+// authenticated can ever fetch this code to read it out.
+const DASHBOARD_USER = process.env.NEXT_PUBLIC_DASHBOARD_USER;
+const DASHBOARD_PASSWORD = process.env.NEXT_PUBLIC_DASHBOARD_PASSWORD;
+const AUTH_HEADERS: HeadersInit =
+  DASHBOARD_USER && DASHBOARD_PASSWORD
+    ? { Authorization: `Basic ${btoa(`${DASHBOARD_USER}:${DASHBOARD_PASSWORD}`)}` }
+    : {};
+
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, { cache: "no-store" });
+  const res = await fetch(`${BASE_URL}${path}`, {
+    cache: "no-store",
+    headers: AUTH_HEADERS,
+  });
   if (!res.ok) {
     throw new Error(`${path} failed: ${res.status}`);
   }
@@ -23,7 +38,7 @@ async function get<T>(path: string): Promise<T> {
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...AUTH_HEADERS },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
