@@ -57,9 +57,9 @@ ROSTER = [
     ("Manufacturing", "Manufacturing Manager", None, None),
     ("Verification & Validation", "Simulation Agent", "simulation_agent.py", "SimulationAgent"),
     ("Verification & Validation", "Physical Testing Agent", None, None),
-    ("Assurance Gate", "Review & Critic", None, None),
-    ("Assurance Gate", "Safety & Risk", None, None),
-    ("Assurance Gate", "Regulatory", None, None),
+    ("Assurance Gate", "Review & Critic", "review_critic_agent.py", "ReviewCritic"),
+    ("Assurance Gate", "Safety & Risk", "safety_risk_agent.py", "SafetyRisk"),
+    ("Assurance Gate", "Regulatory", "regulatory_agent.py", "Regulatory"),
     ("Literature", "Literature Agent", None, None),
 ]
 

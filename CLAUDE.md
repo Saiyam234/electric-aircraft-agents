@@ -219,6 +219,21 @@ separate — a real accountability boundary, not extra headcount.
   classic/default OpenSearch Serverless configuration.
 - Local development: build and test every agent locally first, deploy
   anywhere is a decision for later.
+- Dashboard-to-agent dispatch (Run Console, added 2026-07-31): the dashboard
+  is no longer purely read-only. `backend/run_console.py` launches the exact
+  same real CLI entrypoint (`python3 -m agents.<name> [--directive/--topic/
+  --innovation ...]`) as running it by hand, via a background thread and the
+  project's real venv interpreter, and streams real stdout back to
+  `frontend/app/console/page.tsx` through polling (`GET /api/agents/run/
+  <job_id>` every ~1.4s). This is explicitly NOT a chat interface — agents
+  are one-shot batch processes, not conversational sessions, and the UI says
+  so. Every dispatch requires an explicit confirm click showing real
+  historical cost stats before it fires, since every run is real Claude
+  Agent SDK spend. Agent selection is never taken from raw user input passed
+  to a shell — only names in `run_console.RUNNABLE_AGENTS` can run. Verified
+  end-to-end for real: dispatched KBManager through the browser UI, watched
+  its real output (including a real Cloudflare network-retry line) stream
+  in live, confirmed completion and real cost ($0.8166) matched D1.
 
 ## FINALIZED TOOLCHAIN — one tool per job
 
@@ -464,11 +479,59 @@ data before being trusted.
     explicitly out of scope pending VTOL architecture selection.
   - Real cost across all four Wave 3 runs (including Innovation Validator):
     $2.0136, 47 turns total, 0 errors, 0 turn-limit hits.
-- WAVE 4 (needs a complete design/baseline): Review & Critic, Safety & Risk,
-  Regulatory, Manufacturing Manager, Literature Agent, Physical Testing Agent.
-  Not started — most genuinely need a converged spec (VTOL architecture
-  selected, baseline re-derived to 1.40 m) that does not exist yet, unlike
-  Wave 3 which had real partial data to work against.
+- WAVE 4 — PARTIALLY BUILT AND RUN FOR REAL 2026-07-31. Sequencing was not
+  guessed: an Orchestrator run dispatched for real through the new Run
+  Console (see below) independently assessed, per real current state, which
+  offices had genuine work available now versus which were still blocked —
+  that assessment is what this wave actually followed.
+  - Review & Critic — BUILT AND RUN. Real scoped Wave 1-3 cross-consistency
+    audit (NOT a baseline-clearing review — no baseline is converged enough
+    to clear). Three checks: Simulation Agent's independent numbers vs.
+    Chief Integration's adjudication (CONSISTENT), Design Realization/
+    Software Engineer/Innovation Validator's span+architecture caveats
+    against each other (CONSISTENT), Innovation Validator's rotor-integration
+    citation vs. Airframe Engineer's actual Wave 2 review (NEEDS_
+    CLARIFICATION — not a contradiction, but the real event text wasn't
+    retrievable via the event-type filters available at run time, which is
+    what led to the get_recent_events fix below). Direct-chat spot-check
+    explicitly NOT performed — nothing real to check yet — and said so
+    plainly rather than fabricating it. Cost $1.1259, 46 turns.
+  - Safety & Risk — BUILT AND RUN, cybersecurity/link-security slice only.
+    Full FMEA correctly deferred per CLAUDE.md's own re-run policy (structure/
+    propulsion/battery will all change on re-derivation + architecture
+    selection). Hazard-analyzed Software Engineer's real proposed failsafes:
+    found GPS spoofing UNMITIGATED (the proposed triggers detect GPS absence/
+    noise, not a smoothly consistent false signal — genuine fly-away risk)
+    and escalated it for real per the standing safety rule; telemetry-jamming
+    discrimination and single-IMU-fallback findings were PARTIALLY_MITIGATED
+    and correctly NOT escalated, preserving the escalation rule's meaning.
+    Cost $0.5039, 9 turns.
+  - Regulatory — BUILT AND RUN, with real WebSearch access (same as
+    Foundational Research Agent) since no KB coverage of real regulatory
+    frameworks existed yet. Found and cited four real sources (FAA Part 107,
+    FAA Section 44809 VLOS, EASA Open Category, LiPo storage-voltage
+    guidance). Verdicts: weight-tier fit and autonomous-operation legality
+    both NEEDS_JURISDICTION_DECISION (genuinely blocked on Saiyam picking a
+    flight-test jurisdiction, exactly as requirement #32 anticipates); LiPo
+    handling COMPLIANT_LIKELY against requirements #25-28. Cost $0.6311,
+    16 turns.
+  - Manufacturing Manager, Literature Agent, Physical Testing Agent — NOT
+    BUILT. The real Orchestrator run assessed all three as genuinely blocked
+    right now (no BOM without architecture-decided geometry; no baseline has
+    been stamped yet for an interim doc; no physical article exists to test)
+    rather than partially scoped like Wave 3 was — deferred on that basis,
+    not skipped arbitrarily.
+  - A real bug surfaced during Review & Critic's run and independently
+    corroborated by Design Realization Agent's earlier run: `get_recent_events`
+    tools fetched only `limit` most-recent events THEN filtered by type in
+    Python, making older events of a real, correctly-spelled type
+    (`airframe_review_complete`, event 92) unreachable once the log grew past
+    `limit`. Fixed at the source: `storage.get_audit_log()` now takes a real
+    `event_type` filter applied at the SQL layer, and all four affected tool
+    implementations (Simulation Agent, Design Realization Agent, Review &
+    Critic, Safety & Risk) were updated to use it. Regression test added.
+    Full suite: 61/61 passing.
+  - Total real Wave 4 spend so far: $2.2609, 71 turns, 0 errors.
 
 Cluster messaging: CLAUDE.md's stated trigger for building it ("genuinely
 competing voices to arbitrate") has now technically been met — Wave 2 produced

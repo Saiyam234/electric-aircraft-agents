@@ -341,7 +341,23 @@ def log_event(
     )
 
 
-def get_audit_log(limit: int = 50) -> list[AuditLogRow]:
+def get_audit_log(limit: int = 50, event_type: str | None = None) -> list[AuditLogRow]:
+    """event_type filters at the SQL layer, not after fetching `limit` rows.
+
+    That distinction is load-bearing: fetch-then-filter silently makes older
+    events of a given type unreachable once the log outgrows `limit` — found
+    for real, independently, by both Design Realization Agent and Review &
+    Critic, each unable to retrieve event 92 (airframe_review_complete) once
+    the log passed ~160 events, even with an exactly-correct event_type
+    string. Filtering here means a caller asking for a specific type gets
+    real matching rows regardless of how much unrelated activity sits
+    between them and the present.
+    """
+    if event_type:
+        return _d1_query(
+            "SELECT * FROM audit_log WHERE event_type = ? ORDER BY id DESC LIMIT ?",
+            [event_type, limit],
+        )
     return _d1_query("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", [limit])
 
 

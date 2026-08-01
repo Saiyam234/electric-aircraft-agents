@@ -6,7 +6,9 @@ kept in place rather than moved, since it's already tested and imported by
 every agent script and by test_storage.py; moving it would be a repo-wide
 import refactor with no functional upside). Nothing here renders HTML.
 
-Run:  python3 backend/api.py     (serves on http://127.0.0.1:5001)
+Run:  python3 backend/api.py     (serves on http://0.0.0.0:5001 by default;
+override with the PORT/HOST env vars — Railway and similar platforms inject
+PORT automatically).
 The Next.js frontend (frontend/) talks to this over fetch() + CORS.
 """
 
@@ -20,6 +22,7 @@ from flask_cors import CORS
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import storage  # noqa: E402
+import run_console  # noqa: E402
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
@@ -46,9 +49,9 @@ ROSTER = [
     ("Manufacturing", "Manufacturing Manager", None, None),
     ("Verification & Validation", "Simulation Agent", "simulation_agent.py", "SimulationAgent"),
     ("Verification & Validation", "Physical Testing Agent", None, None),
-    ("Assurance Gate", "Review & Critic", None, None),
-    ("Assurance Gate", "Safety & Risk", None, None),
-    ("Assurance Gate", "Regulatory", None, None),
+    ("Assurance Gate", "Review & Critic", "review_critic_agent.py", "ReviewCritic"),
+    ("Assurance Gate", "Safety & Risk", "safety_risk_agent.py", "SafetyRisk"),
+    ("Assurance Gate", "Regulatory", "regulatory_agent.py", "Regulatory"),
     ("Literature", "Literature Agent", None, None),
 ]
 
@@ -336,7 +339,63 @@ def logs():
     ])
 
 
+@app.route("/api/agents/runnable")
+def runnable_agents():
+    """Every real, dispatchable agent, its real CLI input mode, and real
+    historical cost stats computed from actual past runs — never a fabricated
+    estimate. Agents with zero real runs simply have no cost hint yet."""
+    events = storage.get_audit_log(limit=500)
+    costs: dict[str, list[float]] = {}
+    for e in events:
+        if e["event_type"] != "agent_end":
+            continue
+        for tok in e["description"].split():
+            if tok.startswith("cost=$"):
+                try:
+                    costs.setdefault(e["agent"], []).append(float(tok[6:]))
+                except ValueError:
+                    pass
+
+    result = []
+    for name, spec in run_console.RUNNABLE_AGENTS.items():
+        vals = costs.get(name, [])
+        result.append({
+            "agent": name,
+            "mode": spec["mode"],
+            "run_count": len(vals),
+            "avg_cost": round(sum(vals) / len(vals), 4) if vals else None,
+            "min_cost": round(min(vals), 4) if vals else None,
+            "max_cost": round(max(vals), 4) if vals else None,
+        })
+    return jsonify(result)
+
+
+@app.route("/api/agents/run", methods=["POST"])
+def start_agent_run():
+    body = request.get_json(force=True) or {}
+    agent = body.get("agent", "")
+    user_input = body.get("input")
+    result = run_console.start_job(agent, user_input)
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(result)
+
+
+@app.route("/api/agents/run/<job_id>")
+def get_agent_run(job_id):
+    job = run_console.get_job(job_id)
+    if job is None:
+        return jsonify({"error": "unknown job_id"}), 404
+    return jsonify(job)
+
+
+@app.route("/api/agents/runs")
+def list_agent_runs():
+    return jsonify(run_console.list_jobs())
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
-    print(f"API → http://127.0.0.1:{port}   (Ctrl+C to stop)")
-    app.run(host="127.0.0.1", port=port, debug=False)
+    host = os.environ.get("HOST", "0.0.0.0")
+    print(f"API → http://{host}:{port}   (Ctrl+C to stop)")
+    app.run(host=host, port=port, debug=False, threaded=True)

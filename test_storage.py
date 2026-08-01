@@ -163,6 +163,23 @@ def test_log_event_and_get_audit_log(baseline_id):
     assert any(e["description"] == marker for e in recent)
 
 
+def test_get_audit_log_event_type_filters_at_sql_layer_not_after_limit(baseline_id):
+    """Regression test: filtering after a small `limit` fetch made older
+    events of a real type unreachable once the log outgrew that limit — found
+    independently by both Design Realization Agent and Review & Critic, each
+    unable to retrieve a real, existing event via an exactly-correct
+    event_type string. Log a marker event, then bury it under 5 unrelated
+    events, and confirm a small limit + the real type still finds it."""
+    marker = _unique("event")
+    event_type = _unique("type")
+    storage.log_event("pytest", event_type, marker, related_baseline_id=baseline_id)
+    for _ in range(5):
+        storage.log_event("pytest", "unrelated_event", _unique("noise"), related_baseline_id=baseline_id)
+
+    filtered = storage.get_audit_log(limit=2, event_type=event_type)
+    assert any(e["description"] == marker for e in filtered)
+
+
 @pytest.fixture
 def kb_entry_id():
     entry_id = _unique("kb")

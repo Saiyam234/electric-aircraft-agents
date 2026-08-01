@@ -61,10 +61,8 @@ async def get_baseline_tool(args):
     {"limit": float, "event_type": str},
 )
 async def get_recent_events_tool(args):
-    rows = storage.get_audit_log(limit=int(args.get("limit", 30) or 30))
-    event_type = (args.get("event_type") or "").strip()
-    if event_type:
-        rows = [r for r in rows if r["event_type"] == event_type]
+    event_type = (args.get("event_type") or "").strip() or None
+    rows = storage.get_audit_log(limit=int(args.get("limit", 30) or 30), event_type=event_type)
     return {"content": [{"type": "text", "text": json.dumps(rows, default=str)}]}
 
 
