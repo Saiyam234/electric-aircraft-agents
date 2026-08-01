@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 import { Search, Bell, Sun, Moon, Command, Menu } from "lucide-react";
+import { AccountMenu } from "@/components/account-menu";
 
 export function Topbar({
   onOpenPalette,
@@ -73,9 +74,15 @@ export function Topbar({
             <Moon className="h-4 w-4" />
           )}
         </button>
-        <div className="ml-1 flex h-7 w-7 items-center justify-center rounded-full bg-foreground text-[length:var(--text-2xs)] font-semibold text-background">
-          S
-        </div>
+        <AccountMenu align="end">
+          <button
+            type="button"
+            className="ml-1 flex h-7 w-7 items-center justify-center rounded-full bg-foreground text-[length:var(--text-2xs)] font-semibold text-background transition-opacity hover:opacity-85"
+            aria-label="Account"
+          >
+            S
+          </button>
+        </AccountMenu>
       </div>
     </header>
   );

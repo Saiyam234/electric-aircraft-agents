@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { PanelLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "@/lib/nav";
+import { AccountMenu } from "@/components/account-menu";
 
 export function Sidebar({
   collapsed,
@@ -72,17 +73,22 @@ export function Sidebar({
           ))}
         </nav>
 
-        <div className="mt-auto flex items-center gap-2.5 rounded-lg p-2">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand text-[11px] font-semibold text-white">
-            S
-          </div>
-          {!collapsed && (
-            <div className="min-w-0">
-              <div className="truncate text-[length:var(--text-xs)] font-medium text-foreground">Saiyam</div>
-              <div className="truncate text-[length:var(--text-2xs)] text-muted-foreground">Electric Aircraft</div>
+        <AccountMenu align="start">
+          <button
+            type="button"
+            className="mt-auto flex items-center gap-2.5 rounded-lg p-2 text-left transition-colors hover:bg-accent"
+          >
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand text-[11px] font-semibold text-white">
+              S
             </div>
-          )}
-        </div>
+            {!collapsed && (
+              <div className="min-w-0">
+                <div className="truncate text-[length:var(--text-xs)] font-medium text-foreground">Saiyam</div>
+                <div className="truncate text-[length:var(--text-2xs)] text-muted-foreground">Electric Aircraft</div>
+              </div>
+            )}
+          </button>
+        </AccountMenu>
       </aside>
     </>
   );
