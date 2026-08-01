@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { CommandPalette } from "@/components/command-palette";
@@ -10,6 +11,8 @@ import { SearchContext } from "@/lib/search-context";
 import { CountsContext } from "@/lib/counts-context";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const isLoginPage = pathname === "/login";
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -45,8 +48,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (!isLoginPage) refresh();
+  }, [refresh, isLoginPage]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -58,6 +61,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
+
+  if (isLoginPage) return <>{children}</>;
 
   return (
     <div className="flex min-h-dvh">

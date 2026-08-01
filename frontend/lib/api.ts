@@ -10,25 +10,15 @@ import type {
   RunnableAgent,
 } from "./types";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:5001";
-
-// Same shared credential as proxy.ts / backend/api.py's DASHBOARD_USER +
-// DASHBOARD_PASSWORD. Safe to bake into the client bundle here specifically
-// because proxy.ts gates every request to this app (including the bundle
-// itself) behind that same password first — nobody who hasn't already
-// authenticated can ever fetch this code to read it out.
-const DASHBOARD_USER = process.env.NEXT_PUBLIC_DASHBOARD_USER;
-const DASHBOARD_PASSWORD = process.env.NEXT_PUBLIC_DASHBOARD_PASSWORD;
-const AUTH_HEADERS: HeadersInit =
-  DASHBOARD_USER && DASHBOARD_PASSWORD
-    ? { Authorization: `Basic ${btoa(`${DASHBOARD_USER}:${DASHBOARD_PASSWORD}`)}` }
-    : {};
+// Same-origin, relayed through app/backend/[...path]/route.ts. The browser
+// never talks to the real backend URL or holds its credentials — that
+// relay runs server-side and attaches DASHBOARD_USER/PASSWORD itself, so
+// there's nothing here for an unauthenticated visitor to extract even if
+// they somehow got a copy of this file.
+const BASE_URL = "/backend";
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    cache: "no-store",
-    headers: AUTH_HEADERS,
-  });
+  const res = await fetch(`${BASE_URL}${path}`, { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`${path} failed: ${res.status}`);
   }
@@ -38,7 +28,7 @@ async function get<T>(path: string): Promise<T> {
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...AUTH_HEADERS },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) {

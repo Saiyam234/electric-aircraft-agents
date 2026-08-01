@@ -1,34 +1,34 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { SESSION_COOKIE_NAME, isValidSessionCookie } from "@/lib/session";
 
-// Gates every request (including static assets — deliberately no matcher)
-// behind one shared password, since this is a solo-owner tool, not a
-// multi-user product. Unset locally on purpose (localhost is already
-// private); must be set on Railway/prod or the dashboard is public to
-// anyone with the link.
-const USER = process.env.DASHBOARD_USER;
-const PASSWORD = process.env.DASHBOARD_PASSWORD;
+// Gates every page and API route behind a real login screen (not a browser
+// Basic Auth popup) — this is a solo-owner tool, not a multi-user product,
+// so one shared password is enough. Unset locally on purpose (localhost is
+// already private); must be set on Railway/prod or the dashboard is public
+// to anyone with the link.
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD;
 
-function unauthorized() {
-  return new NextResponse("Authentication required", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="Electric Aircraft"' },
-  });
-}
+const PUBLIC_PATHS = ["/login", "/api/login", "/_next", "/favicon.ico"];
 
 export function proxy(request: NextRequest) {
-  if (!USER || !PASSWORD) return NextResponse.next();
+  if (!DASHBOARD_PASSWORD) return NextResponse.next();
 
-  const auth = request.headers.get("authorization");
-  if (!auth?.startsWith("Basic ")) return unauthorized();
+  const { pathname } = request.nextUrl;
+  if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    return NextResponse.next();
+  }
 
-  const decoded = atob(auth.slice("Basic ".length));
-  const separator = decoded.indexOf(":");
-  if (separator === -1) return unauthorized();
+  const cookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  if (isValidSessionCookie(cookie, DASHBOARD_PASSWORD)) {
+    return NextResponse.next();
+  }
 
-  const user = decoded.slice(0, separator);
-  const password = decoded.slice(separator + 1);
-  if (user !== USER || password !== PASSWORD) return unauthorized();
+  if (pathname.startsWith("/backend/")) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
 
-  return NextResponse.next();
+  const loginUrl = new URL("/login", request.url);
+  loginUrl.searchParams.set("next", pathname);
+  return NextResponse.redirect(loginUrl);
 }
