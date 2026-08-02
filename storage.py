@@ -488,6 +488,20 @@ def search_kb(query: str, top_k: int = 5) -> list[KBSearchMatch]:
     return data["result"]["matches"]
 
 
+def get_kb_count() -> int:
+    """Real total vector count from Vectorize's own index info endpoint —
+    O(1), not a paginated count via list_kb_ids (which is O(n) API calls and
+    also eventually-consistent/lagged, per its own docstring below)."""
+    url = f"{CF_API_BASE}/accounts/{ACCOUNT_ID}/vectorize/v2/indexes/{VECTORIZE_INDEX_NAME}/info"
+    resp = _request("GET", url, headers=_HEADERS)
+    resp.raise_for_status()
+    data = resp.json()
+    if not data["success"]:
+        logger.error("Vectorize info failed: %s", data["errors"])
+        raise CloudflareAPIError(f"Vectorize info failed: {data['errors']}")
+    return data["result"]["vectorCount"]
+
+
 def list_kb_ids(limit: int = 1000) -> list[str]:
     """Paginates through every vector ID currently in the KB index.
 

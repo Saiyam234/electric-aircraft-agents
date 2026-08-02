@@ -147,7 +147,7 @@ def overview():
     baselines = storage.list_baselines(limit=40)
 
     try:
-        kb_count = len(storage.list_kb_ids())
+        kb_count = storage.get_kb_count()
     except Exception:
         kb_count = None
 
@@ -366,6 +366,14 @@ def kb():
     except Exception as exc:
         return jsonify({"error": str(exc)}), 502
     return jsonify(rows)
+
+
+@app.route("/api/kb/count")
+def kb_count():
+    try:
+        return jsonify({"total": storage.get_kb_count()})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
 
 
 @app.route("/api/logs")

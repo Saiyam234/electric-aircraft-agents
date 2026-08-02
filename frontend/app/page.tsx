@@ -115,6 +115,9 @@ export default function OverviewPage() {
           <StatRow label="Agents built" sub={`${data.agents_built} of ${data.roster_total}`}>
             <Ring pct={builtPct} />
           </StatRow>
+          <StatRow label="Knowledge base">
+            {data.kb_count !== null ? data.kb_count : "—"}
+          </StatRow>
           <StatRow label="Awaiting you" accent={data.open_decisions_count > 0}>
             {data.open_decisions_count}
           </StatRow>

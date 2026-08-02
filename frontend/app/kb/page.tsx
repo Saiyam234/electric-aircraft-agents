@@ -13,6 +13,7 @@ const ease = [0.16, 1, 0.3, 1] as const;
 export default function KnowledgeBasePage() {
   const [query, setQuery] = useState("");
   const [entries, setEntries] = useState<KbEntry[] | null>(null);
+  const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -34,6 +35,7 @@ export default function KnowledgeBasePage() {
 
   useEffect(() => {
     load("");
+    api.kbCount().then((r) => setTotal(r.total)).catch(() => setTotal(null));
   }, []);
 
   const onChange = (value: string) => {
@@ -45,9 +47,16 @@ export default function KnowledgeBasePage() {
   return (
     <div>
       <div className="mb-7">
-        <h1 className="text-[length:var(--text-xl)] font-semibold tracking-[-0.02em]">
-          Knowledge base
-        </h1>
+        <div className="flex items-baseline gap-2.5">
+          <h1 className="text-[length:var(--text-xl)] font-semibold tracking-[-0.02em]">
+            Knowledge base
+          </h1>
+          {total !== null && (
+            <span className="tabular font-mono text-[length:var(--text-sm)] text-muted-foreground">
+              {total} total {total === 1 ? "entry" : "entries"}
+            </span>
+          )}
+        </div>
         <p className="mt-1.5 text-[length:var(--text-sm)] text-muted-foreground">
           Real semantic search over Vectorize — not a client-side filter.
         </p>
@@ -81,7 +90,7 @@ export default function KnowledgeBasePage() {
         <div>
           {!query && (
             <p className="mb-3 text-[length:var(--text-2xs)] text-muted-foreground">
-              Showing a sample of {entries.length} entries — search to find more.
+              Showing {entries.length} of {total ?? "…"} entries — search to find more.
             </p>
           )}
           <div className="hairline-grid grid-cols-1">

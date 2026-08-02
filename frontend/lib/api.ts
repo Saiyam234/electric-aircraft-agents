@@ -49,6 +49,7 @@ export const api = {
     post<{ ok: true }>(`/api/requirements/${id}`, { decision }),
   baselines: () => get<Baseline[]>("/api/baselines"),
   kb: (q: string) => get<KbEntry[]>(`/api/kb?q=${encodeURIComponent(q)}`),
+  kbCount: () => get<{ total: number }>("/api/kb/count"),
   logs: (limit = 150) => get<LogEvent[]>(`/api/logs?limit=${limit}`),
   runnableAgents: () => get<RunnableAgent[]>("/api/agents/runnable"),
   startRun: (agent: string, input: string | null) =>
