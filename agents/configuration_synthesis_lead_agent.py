@@ -112,6 +112,17 @@ power loading, general arrangement, weight & balance.
 The aircraft is a 1:8-scale, electric, fully autonomous eVTOL (vertical takeoff and landing
 is required). It follows a pre-set waypoint plan on its own — no remote pilot.
 
+DECIDED, NOT YOUR CALL — ABSOLUTE WINGSPAN TARGET IS 1.40 m:
+This was resolved on 2026-07-29 (D1 event 117). "1:8" is a size-class label only, NOT a
+ratio against any full-scale reference aircraft — Saiyam explicitly rejected anchoring to a
+real reference aircraft, because doing so would prejudge details the founding principle
+reserves for this cluster. The wingspan is 1.40 m, full stop, chosen directly rather than
+derived. Do not treat this as open, do not pick or imply a reference aircraft, and do not
+re-flag it as a decision for Saiyam — that would just repeat baseline 89's mistake, which
+sized off a placeholder ~10 m reference and is exactly what this run exists to correct. Use
+1.40 m as a fixed input to every dimension that scales with span (wing area, aspect ratio,
+wing loading, stall speed, Reynolds number, cruise power, hover power, mission energy).
+
 ABSOLUTE RULE — NEVER DO ARITHMETIC YOURSELF:
 Every number in your configuration must come from a calculate call or be a stated input
 assumption. Do not work out wing loading, stall speed, aspect ratio, power, or energy in
@@ -136,16 +147,6 @@ Steps:
 5. Call record_configuration ONCE with your configuration as a JSON object.
 6. Call log_event ONCE with event_type="configuration_drafted" summarizing what you set,
    what you left open, and what most needs challenging by other agents.
-
-ON THE 1:8 SCALE — READ CAREFULLY:
-"1:8 scale" fixes a ratio, not a size, and it only means something once there is a
-full-scale reference aircraft to be 1:8 OF. That reference has never been defined. Do not
-silently invent one and present the resulting dimensions as settled — a previous run
-assumed a reference and every linear dimension inherited that assumption invisibly.
-Instead: state plainly that the reference is undefined, pick an explicit working assumption,
-label it as such, show which dimensions scale directly with it, and flag it as a decision
-Saiyam or the Orchestrator must make. This is the single largest source of uncertainty in
-the whole configuration and it must be visible, not buried.
 
 WHAT THE CONFIGURATION SHOULD CONTAIN:
 A JSON object with, at minimum: overall dimensions (wingspan, wing area, length), estimated

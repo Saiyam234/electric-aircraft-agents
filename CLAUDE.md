@@ -554,16 +554,41 @@ still open — not decided by this note.
   milestone, not a decision to make right now
 
 ## Still open — do not assume resolved
-- Baseline 89 needs revision now that the 1:8 basis is decided (see "Scale:
-  1:8" above). Baseline 89's wingspan (1.25 m) was derived from a "notional
-  ~10 m GA-class reference... NOT a commitment" placeholder; the decided
-  target is 1.40 m (a ~12% increase), which propagates: wing area, aspect
-  ratio, wing loading, stall speed, Reynolds number, cruise power, the hover
-  power bracket, and mission energy all derive from span in baseline 89's
-  config. NOT yet re-derived — this needs a real Configuration Synthesis
-  Lead + Math & Physics Engine run against the new 1.40 m target (a new
-  agent spend), not a hand-patch of baseline 89's numbers, to keep the
-  no-arithmetic-by-hand discipline. Flagged, not started.
+- Baseline 89's re-derivation to 1.40 m — DONE 2026-08-02. Before this run,
+  `configuration_synthesis_lead_agent.py`'s own prompt still told the model
+  "the reference aircraft has never been defined... flag it as a decision
+  Saiyam must make" — stale instructions that would have reproduced baseline
+  89's exact mistake. Fixed the prompt first (1.40 m is now a hardcoded,
+  non-negotiable input, with an explicit instruction not to re-flag it), then
+  ran Configuration Synthesis Lead for real: baseline 210
+  (`v0.1-config-draft-1785704111`), span 1.40 m / area 0.290 m² (AR 6.76,
+  MAC 0.208 m), MTOW 2.5 kg carried, wing loading 8.62 kg/m², V_stall 11.75
+  m/s (CL_max 1.0, SD7003), V_cruise 18 m/s, Re_cruise 256k, cruise
+  electrical 82.6 W, hover bracketed 193.5 W (4x0.40 m) to 140.7 W (4x0.55
+  m) since architecture stays open, mission energy 30.4-32.5 Wh (hover
+  18.5-23.8% of budget), min pack 4S ~2.2 Ah / 0.22 kg. VTOL architecture
+  correctly left unselected, with a real evidence-backed
+  architecture_candidates section (tiltrotor/lift+cruise/tiltwing/
+  tailsitter, each with a KB-cited advantage/disadvantage and the specific
+  open question that would decide it) rather than defaulting to one.
+  Math & Physics Engine then independently re-derived every one of those
+  numbers from scratch via `calculate()` — all matched exactly, no
+  discrepancies (unlike Wave 3's baseline-89 check, which found real drift).
+  Real cost: $0.7577 + $0.9306 = $1.6883, 59 turns, 0 errors.
+  NEW real findings from that validation, not yet resolved:
+  - Spar structural closure is still unverifiable — baseline 210 carries no
+    real spar cap geometry, and requirement 29's hand-layup knockdown
+    (Airframe's open objection, event 91, Wave 2) still hasn't been applied.
+    A placeholder calc gives SF~8.7, but it isn't a real number yet.
+  - Hover-time assumption (120 s) may be optimistic — a realistic
+    takeoff+hover+landing+abort profile is closer to 3-4 min, which would
+    push hover's share of mission energy past 40% and require the 0.35 kg
+    battery-mass budget to grow. Flagged as a sensitivity check to run, not
+    run yet.
+  - CD0=0.03 is still inherited from Wave 2, unverified in XFLR5 at the new
+    span's Reynolds number (256k).
+  - Rotor tip Mach and CG/static margin remain uncheckable (no RPM or
+    component layout in the draft).
 - Real cluster messaging (agents exchanging messages mid-run, multi-round,
   auto-escalation after 3 unresolved rounds) — NOT built. Its stated trigger
   ("genuinely competing voices to arbitrate") was met in Wave 2 (Airframe's
