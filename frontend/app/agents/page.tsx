@@ -37,7 +37,7 @@ export default function AgentsPage() {
           {errorAgents.length > 0
             ? ` · ${errorAgents.length} with a real error`
             : " · no real errors on record"}
-          . Drag nodes, scroll to zoom, hover to trace a path, click for details.
+          . Drag the canvas to pan, scroll to zoom, hover to trace a path, click a node or edge for details.
         </p>
       </div>
 

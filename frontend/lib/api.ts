@@ -1,4 +1,5 @@
 import type {
+  AgentGraphResponse,
   Baseline,
   Decision,
   KbEntry,
@@ -41,6 +42,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 export const api = {
   overview: () => get<Overview>("/api/overview"),
   roster: () => get<RosterAgent[]>("/api/roster"),
+  agentsGraph: () => get<AgentGraphResponse>("/api/agents/graph"),
   decisions: () => get<Decision[]>("/api/decisions"),
   answerDecision: (question: string, answer: string) =>
     post<{ ok: true }>("/api/decisions/answer", { question, answer }),

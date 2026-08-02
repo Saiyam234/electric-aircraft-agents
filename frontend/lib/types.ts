@@ -46,6 +46,23 @@ export interface RosterAgent {
   latest_output_type: string | null;
 }
 
+export interface AgentGraphNode {
+  division: string;
+  name: string;
+  built: boolean;
+}
+
+export interface AgentGraphEdge {
+  source: string;
+  target: string;
+  artifacts: string[];
+}
+
+export interface AgentGraphResponse {
+  nodes: AgentGraphNode[];
+  edges: AgentGraphEdge[];
+}
+
 export interface DecisionOption {
   option?: string;
   id?: string;

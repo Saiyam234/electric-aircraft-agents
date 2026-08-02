@@ -13,6 +13,7 @@ The Next.js frontend (frontend/) talks to this over fetch() + CORS.
 """
 
 import os
+import re
 import secrets
 import sys
 from collections import Counter
@@ -272,6 +273,78 @@ def roster():
             "latest_output_type": latest["event_type"] if latest else None,
         })
     return jsonify(result)
+
+
+# log_name (audit_log's `agent` column, e.g. "ConfigurationSynthesisLead") ->
+# display_name (e.g. "Configuration Synthesis Lead"), for every built agent.
+_LOG_NAME_TO_DISPLAY = {log_name: display_name for _, display_name, _, log_name in ROSTER if log_name}
+
+_BASELINE_MENTION_RE = re.compile(r"baseline[_\s]*(?:id)?\s*[=:#]?\s*(\d+)", re.IGNORECASE)
+_REQUIREMENT_MENTION_RE = re.compile(r"requirement[s]?\s*#?\s*(\d+)", re.IGNORECASE)
+
+
+def _artifact_mentions(description: str) -> list[str]:
+    """Real artifacts named in an event's own description text — not a
+    schema field (related_baseline_id/related_requirement_id exist in the
+    audit_log table but no agent tool ever populates them, so every row has
+    them NULL; the only real signal is the free text every agent already
+    writes). Returns keys like "baseline 210" or "requirement 29"."""
+    mentions = []
+    for m in _BASELINE_MENTION_RE.finditer(description):
+        mentions.append(f"baseline {m.group(1)}")
+    for m in _REQUIREMENT_MENTION_RE.finditer(description):
+        mentions.append(f"requirement {m.group(1)}")
+    return mentions
+
+
+@app.route("/api/agents/graph")
+def agents_graph():
+    """Real provenance, not the prescribed CLAUDE.md pipeline: which agent's
+    real output another agent's real run actually touched, reconstructed by
+    correlating which baseline/requirement numbers show up in whose event
+    descriptions, in real chronological order. An edge only exists if two
+    different agents' real events both named the same real artifact."""
+    events = storage.get_audit_log(limit=1000)
+    chrono = list(reversed(events))  # get_audit_log is DESC; oldest-first for real sequence
+
+    by_artifact: dict[str, list[dict]] = {}
+    for e in chrono:
+        display_name = _LOG_NAME_TO_DISPLAY.get(e["agent"])
+        if not display_name or e["event_type"] in ("agent_start", "agent_end"):
+            continue
+        for artifact in _artifact_mentions(e["description"]):
+            by_artifact.setdefault(artifact, []).append({
+                "agent": display_name, "timestamp": e["timestamp"],
+                "event_id": e["id"], "description": e["description"],
+            })
+
+    edge_map: dict[tuple[str, str], dict] = {}
+    for artifact, touches in by_artifact.items():
+        for prev, cur in zip(touches, touches[1:]):
+            if prev["agent"] == cur["agent"]:
+                continue
+            key = (prev["agent"], cur["agent"])
+            edge = edge_map.setdefault(key, {
+                "source": prev["agent"], "target": cur["agent"], "artifacts": {},
+            })
+            if artifact not in edge["artifacts"]:
+                edge["artifacts"][artifact] = cur["event_id"]
+
+    edges = [
+        {
+            "source": e["source"],
+            "target": e["target"],
+            "artifacts": sorted(e["artifacts"].keys(), key=lambda a: e["artifacts"][a]),
+        }
+        for e in edge_map.values()
+    ]
+
+    nodes = [
+        {"division": division, "name": display_name, "built": bool(script)}
+        for division, display_name, script, _ in ROSTER
+    ]
+
+    return jsonify({"nodes": nodes, "edges": edges})
 
 
 @app.route("/api/decisions")
