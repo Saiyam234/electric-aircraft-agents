@@ -52,6 +52,12 @@ TURN_WARNING_THRESHOLD = int(MAX_TURNS * 0.8)
 VALID_VERDICTS = {"COMPLIANT_LIKELY", "NEEDS_JURISDICTION_DECISION", "NON_COMPLIANT"}
 
 
+@tool("list_baselines", "List recent baselines, most recent first", {"limit": float})
+async def list_baselines_tool(args):
+    rows = storage.list_baselines(limit=int(args.get("limit", 10) or 10))
+    return {"content": [{"type": "text", "text": json.dumps(rows, default=str)}]}
+
+
 @tool("get_baseline", "Get one baseline's full config by id", {"baseline_id": float})
 async def get_baseline_tool(args):
     try:
@@ -135,6 +141,7 @@ log_event_tool = agent_tools.make_log_event_tool(AGENT_NAME)
 ALLOWED_TOOLS = [
     "WebSearch",
     "mcp__storage__search_kb",
+    "mcp__storage__list_baselines",
     "mcp__storage__get_baseline",
     "mcp__storage__list_requirements",
     "mcp__storage__cite_regulatory_source",
@@ -146,6 +153,7 @@ storage_server = create_sdk_mcp_server(
     name="storage",
     tools=[
         agent_tools.search_kb_tool,
+        list_baselines_tool,
         get_baseline_tool,
         list_requirements_tool,
         cite_regulatory_source_tool,
@@ -175,7 +183,11 @@ the fact is stored with a real citation. A regulatory claim with no real
 citation is worse than no claim.
 
 Steps:
-1. get_baseline(89) to see the real MTOW (2.5 kg) you are assessing against.
+1. Call list_baselines, then get_baseline on the most recent one whose
+   version starts "v0.1-config-draft" — never a hardcoded id, since the
+   configuration baseline changes as the cluster re-derives it (e.g.
+   baseline 89's old placeholder span vs. baseline 210's real 1.40 m
+   re-derivation). Read the real MTOW you are assessing against.
 2. list_requirements(baseline_id=0) and read requirement #32 (regulatory
    mass/dimensions, explicitly jurisdiction-neutral) and requirement #25
    (LiPo cell temperature ceiling) in full — these are the two real,

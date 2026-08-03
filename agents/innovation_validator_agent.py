@@ -5,18 +5,20 @@ each proposed innovation against Knowledge Base evidence + Math & Physics +
 formal requirements, and packages proven innovations for handoff to the
 Concurrent Engineering Cluster."
 
-REAL DATA THIS IS TESTED AGAINST RIGHT NOW: there is no dynamic Innovation
-field agent yet (CLAUDE.md's roster includes them but none are built), so
-there is no live stream of proposed innovations to validate. Rather than
-fabricate a candidate, this agent's self-test validates a real, already-
-computed finding sitting inside baseline 89's own config: the
-"hover_power_bracket" section shows real calculate()-derived hover power at
-three rotor sizes (0.25 m, 0.40 m, 0.55 m) and states "larger discs are
-strongly favored energetically." The self-test asks the agent to validate
-"increase rotor diameter toward the 0.55 m case to ease the hover-dominated
-energy budget" as a candidate innovation, using the SAME real baseline data,
-independently re-run through calculate() rather than trusted from the
-baseline text.
+REAL DATA THIS IS TESTED AGAINST: there is no dynamic Innovation field agent
+yet (CLAUDE.md's roster includes them but none are built), so there is no
+live stream of proposed innovations to validate. Rather than fabricate a
+candidate, this agent's self-test validates a real, already-computed finding
+sitting inside whichever baseline is currently most recent — always fetched
+dynamically (never a hardcoded id or field name; fixed 2026-08-02 after this
+agent's own prompt was found still hardcoding "baseline 89" and a
+"hover_power_bracket" key that baseline 210's later re-derivation had
+already renamed to "hover_bracket", which would have silently made the
+self-test miss the current baseline). The self-test asks the agent to
+validate "increase rotor diameter toward the larger end of the current
+hover-power-vs-rotor-size comparison" as a candidate innovation, using the
+SAME real baseline data, independently re-run through calculate() rather
+than trusted from the baseline text.
 
 WHAT IT WILL NEED ONCE AVAILABLE: real dynamic field-agent output (proposed
 innovations from a battery-efficiency or aerodynamic-efficiency field agent,
@@ -159,11 +161,11 @@ storage_server = create_sdk_mcp_server(
 # fabricated idea. Once a real field agent exists, its proposal should be
 # passed via --innovation instead of relying on this fallback.
 SELF_TEST_INNOVATION = (
-    "Increase rotor diameter toward the larger end of baseline 89's own "
-    "hover_power_bracket comparison (up to 0.55 m per rotor, 4 rotors) to "
-    "reduce hover electrical power and ease the mission energy budget's "
-    "hover-dominance problem, versus the 0.40 m case baseline 89 currently "
-    "uses for its headline numbers."
+    "Increase rotor diameter toward the larger end of the current baseline's "
+    "own hover-power-vs-rotor-size comparison (up to 0.55 m per rotor, 4 "
+    "rotors) to reduce hover electrical power and ease the mission energy "
+    "budget's hover-dominance problem, versus the smaller-rotor case the "
+    "baseline currently uses for its headline numbers."
 )
 
 
@@ -188,10 +190,15 @@ THE CANDIDATE INNOVATION TO VALIDATE:
 "{innovation}"
 
 Steps:
-1. list_baselines, then get_baseline on the most recent one with a real
-   hover_power_bracket section (baseline 89) to see the real MTOW, disk
-   loading assumptions, and the three rotor-size cases already computed
-   there.
+1. list_baselines, then get_baseline on the most recent one whose version
+   starts "v0.1-config-draft" — never a hardcoded baseline id, since the
+   exact field name for the hover-vs-rotor-size comparison has already
+   changed once between baseline versions ("hover_power_bracket" in an
+   older baseline vs. "hover_bracket" in baseline 210). Read whatever real
+   hover-power-vs-rotor-size section that baseline's config actually
+   contains — check its real structure rather than assuming a fixed key —
+   to see the real MTOW, disk loading assumptions, and rotor-size cases
+   already computed there.
 2. Do NOT trust the baseline's own text numbers as your proof — independently
    re-derive them. Call calculate("disk_area_from_rotors", ...) and
    calculate("hover_power", ...) for the 0.40 m case AND the 0.55 m case
@@ -208,7 +215,7 @@ Steps:
    AND you have real cited KB evidence AND you've checked requirement
    alignment. If the airframe/mechanical cost of larger rotors (fold-out
    arms, prop-wing interaction, tiltrotor mechanical complexity — flagged in
-   baseline 89's own "finding" field) means this needs Airframe Engineer's
+   the current baseline's own "finding" field) means this needs Airframe Engineer's
    real input before it can be called proven, say so and use
    NEEDS_MORE_RESEARCH — that is a legitimate, honest verdict, not a
    non-answer.
@@ -224,7 +231,7 @@ async def main():
     parser.add_argument(
         "--innovation",
         help="A real candidate innovation to validate. Omit to run the self-test "
-        "(re-derives baseline 89's own rotor-size hover-power finding independently).",
+        "(re-derives the current baseline's own rotor-size hover-power finding independently).",
     )
     args = parser.parse_args()
 

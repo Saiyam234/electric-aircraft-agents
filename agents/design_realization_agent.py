@@ -5,22 +5,27 @@ is locked to a baseline (manual script handoff, above)." The handoff is
 manual by design (see CLAUDE.md's "Tech stack" section): Saiyam opens
 Fusion 360 and runs the generated script himself.
 
-REAL DATA THIS IS TESTED AGAINST RIGHT NOW: baseline 89's real, already-
-computed wing planform (span, area, root/tip chord, MAC, taper ratio) and
-Airframe Engineer's real airfoil selection (SD7003, event 92). That is
-genuinely enough to generate a real wing-planform sketch/loft script.
+REAL DATA THIS IS TESTED AGAINST RIGHT NOW: the most recent configuration
+baseline's real, already-computed wing planform (span, area, root/tip chord,
+MAC, taper ratio) and Airframe Engineer's real airfoil selection (SD7003,
+event 92). That is genuinely enough to generate a real wing-planform
+sketch/loft script.
 
 WHAT IT WILL NEED ONCE AVAILABLE — read this before trusting the output:
-1. Baseline 89's own wingspan (1.25 m) is STALE. Saiyam decided 2026-07-29
-   (D1 event 117) that the 1:8 basis is an absolute 1.40 m target, not a
-   ratio — but baseline 89 has never been re-derived against that decision
-   (flagged in CLAUDE.md's "Still open" section). This agent does NOT
-   silently rescale baseline 89's numbers itself — that would be exactly the
-   kind of unrequested inline engineering judgment CLAUDE.md's rules exist
-   to prevent, and Design Realization Agent's job is to realize a LOCKED
-   spec, not to re-derive one. It generates the wing at baseline 89's
-   current stored dimensions and prints/logs a prominent, impossible-to-miss
-   flag that the script must be regenerated once baseline 89 is corrected.
+1. Always fetch the MOST RECENT configuration baseline (list_baselines,
+   most recent version starting "v0.1-config-draft"), never a hardcoded
+   baseline id — baseline 89 (span 1.25 m) was a placeholder-reference draft
+   that stayed stale for days; baseline 210 (2026-08-02) already re-derived
+   it to the real decided 1.40 m absolute target (D1 event 117). Do not
+   assume either number — read whatever the latest baseline actually stores.
+   This agent does NOT silently rescale a baseline's numbers itself — that
+   would be exactly the kind of unrequested inline engineering judgment
+   CLAUDE.md's rules exist to prevent, and Design Realization Agent's job is
+   to realize a LOCKED spec, not to re-derive one. If the fetched baseline's
+   wingspan is not 1.40 m, put an unmissable comment block at the very top
+   of the generated script stating the real span it was generated from, the
+   real decided target it does NOT reflect, and that it must be regenerated
+   once corrected — but do not assume that caveat applies without checking.
 2. VTOL architecture is not selected, so there is no fuselage, tail, or
    lift-system geometry to realize yet — only the wing planform is
    architecture-agnostic enough to generate today. This run is scoped to the
@@ -165,17 +170,17 @@ agent's real review, stop — that number belongs to Math & Physics Engine or
 Airframe Engineer, not you. Read it from get_baseline or get_recent_events
 instead.
 
-CRITICAL — SCOPE IS THE WING ONLY, AND THE SPAN IS KNOWN STALE:
-1. get_baseline(89) and read its real "dimensions" section (wingspan, wing
-   area, root chord, tip chord, MAC, taper ratio) — these came from a
-   PLACEHOLDER reference that was never re-derived against the wingspan
-   Saiyam actually decided (1.40 m absolute, D1 event 117, 2026-07-29).
-   Use baseline 89's stored numbers exactly as they are — do NOT rescale
-   them yourself, that is not your job and not how this project verifies
-   numbers. Instead, put an unmissable comment block at the very top of the
-   generated script stating the real span it was generated from, the real
-   decided target it does NOT yet reflect, and that it must be regenerated
-   once baseline 89 is corrected.
+CRITICAL — SCOPE IS THE WING ONLY; NEVER HARDCODE A BASELINE ID:
+1. Call list_baselines, then get_baseline on the most recent one whose
+   version starts "v0.1-config-draft". Read its real "dimensions" section
+   (wingspan, wing area, root chord, tip chord, MAC, taper ratio). Use its
+   stored numbers exactly as they are — do NOT rescale them yourself, that
+   is not your job and not how this project verifies numbers. Check the
+   wingspan against the real decided target (1.40 m absolute, D1 event 117,
+   2026-07-29): if it matches, generate normally; if it does NOT match, put
+   an unmissable comment block at the very top of the generated script
+   stating the real span it was generated from, the real decided target it
+   does NOT reflect, and that it must be regenerated once corrected.
 2. get_recent_events filtered to event_type="airframe_review_complete" to
    read Airframe Engineer's real airfoil decision (SD7003) for a comment
    noting which airfoil profile a real geometry pass would loft between —
@@ -203,7 +208,7 @@ CRITICAL — SCOPE IS THE WING ONLY, AND THE SPAN IS KNOWN STALE:
 
 async def main():
     argparse.ArgumentParser(
-        description="Design Realization Agent — wing-only Fusion 360 script from baseline 89"
+        description="Design Realization Agent — wing-only Fusion 360 script from the latest configuration baseline"
     ).parse_args()
 
     options = agent_runtime.build_options(

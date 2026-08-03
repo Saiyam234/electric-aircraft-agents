@@ -16,13 +16,13 @@ internal consistency. Per an Orchestrator directive run for real on
 now: it can audit real cross-system consistency, but it is NOT a
 baseline-clearing review, because no baseline is converged enough to clear.
 
-WHAT IT WILL NEED ONCE AVAILABLE: a converged, re-derived baseline (post
-1.40 m correction) and a selected VTOL architecture, at which point this
-office's audit becomes a real precondition for Assurance sign-off rather
-than a standalone consistency check. There is no real "direct-chat history"
-to spot-check yet either — Saiyam has not messaged an agent directly through
-a channel that logs as such — so that half of the role has nothing to run
-against yet and this agent does not fabricate it.
+WHAT IT WILL NEED ONCE AVAILABLE: a selected VTOL architecture (the 1.40 m
+span re-derivation itself is done — baseline 210, 2026-08-02), at which
+point this office's audit becomes a real precondition for Assurance sign-off
+rather than a standalone consistency check. There is no real "direct-chat
+history" to spot-check yet either — Saiyam has not messaged an agent
+directly through a channel that logs as such — so that half of the role has
+nothing to run against yet and this agent does not fabricate it.
 """
 
 import argparse
@@ -38,6 +38,12 @@ import storage
 AGENT_NAME = "ReviewCritic"
 
 VALID_OUTCOMES = {"CONSISTENT", "INCONSISTENCY_FOUND", "NEEDS_CLARIFICATION"}
+
+
+@tool("list_baselines", "List recent baselines, most recent first", {"limit": float})
+async def list_baselines_tool(args):
+    rows = storage.list_baselines(limit=int(args.get("limit", 10) or 10))
+    return {"content": [{"type": "text", "text": json.dumps(rows, default=str)}]}
 
 
 @tool("get_baseline", "Get one baseline's full config by id", {"baseline_id": float})
@@ -105,6 +111,7 @@ log_event_tool = agent_tools.make_log_event_tool(AGENT_NAME)
 
 ALLOWED_TOOLS = [
     "mcp__storage__search_kb",
+    "mcp__storage__list_baselines",
     "mcp__storage__get_baseline",
     "mcp__storage__get_recent_events",
     "mcp__storage__record_consistency_check",
@@ -115,6 +122,7 @@ storage_server = create_sdk_mcp_server(
     name="storage",
     tools=[
         agent_tools.search_kb_tool,
+        list_baselines_tool,
         get_baseline_tool,
         get_recent_events_tool,
         record_consistency_check_tool,
@@ -128,10 +136,9 @@ independent offices (the other two are Safety & Risk and Regulatory). You do
 not coordinate your verdict with them.
 
 Your real job right now is NOT to clear a baseline — no baseline is
-converged enough for that yet (VTOL architecture unselected, span still
-pending re-derivation to 1.40 m). Your real job is a scoped cross-system
-consistency audit: does what different real agents actually said and did
-hang together, or does it quietly contradict itself?
+converged enough for that yet (VTOL architecture unselected). Your real job
+is a scoped cross-system consistency audit: does what different real agents
+actually said and did hang together, or does it quietly contradict itself?
 
 You do not have a calculate tool. If you find yourself wanting to check
 whether a number is numerically correct, that is Simulation Agent's job
@@ -139,27 +146,33 @@ whether a number is numerically correct, that is Simulation Agent's job
 DIFFERENT agents' real statements are consistent WITH EACH OTHER, not
 whether any one number is right in isolation.
 
+CRITICAL — NEVER HARDCODE A BASELINE ID OR A FIXED LIST OF PAST CLAIMS:
+Baseline ids and what's genuinely current change over time (e.g. baseline
+89's original placeholder span vs. baseline 210's later re-derivation to the
+real 1.40 m target) — an earlier version of this prompt hardcoded
+get_baseline(89) and a fixed set of Wave 1-3 checks, which would silently
+audit stale claims instead of whatever is real right now. Always work from
+what you actually read this run, not a memorized list.
+
 Steps:
-1. get_baseline(89) for the real current config.
-2. get_recent_events with a generous limit (60+) and no type filter to read
-   the real, actual sequence of what happened across Wave 1-3 — Airframe
-   Engineer's review, Propulsion & Power's review, Chief Integration's
-   adjudication, Innovation Validator's verdict, Simulation Agent's
-   independent verification, Software Engineer's proposals, Design
-   Realization's generated script. Read the real text, not a summary of it.
-3. Run at least these real cross-checks via record_consistency_check:
-   (a) Does Simulation Agent's independently-CONFIRMED spar/stall numbers
-       actually match what Chief Integration's adjudication claims was
-       accepted? (b) Does Design Realization Agent's wing_planform.py
-       header actually carry the stale-1.25m-vs-1.40m caveat consistently
-       with how Software Engineer and Innovation Validator both also
-       flagged VTOL-architecture and span dependencies — or does any one of
-       them contradict, ignore, or understate it? (c) Does Innovation
-       Validator's NEEDS_MORE_RESEARCH verdict on larger rotors line up
-       with what Airframe Engineer's real review actually says about
-       rotor/prop-wing integration, or is Innovation Validator citing a
-       concern Airframe never actually raised? Search the real event text
-       for each side of every comparison — do not assume consistency.
+1. Call list_baselines, then get_baseline on the most recent one whose
+   version starts "v0.1-config-draft", for the real current config.
+2. get_recent_events with a generous limit (80+) and no type filter to read
+   the real, actual sequence of what has happened so far — every real
+   review, adjudication, verdict, and proposal on record. Read the real
+   text, not a summary of it.
+3. From what you actually read, identify genuine cross-references worth
+   checking — cases where one agent's real claim depends on, restates, or
+   should logically match another agent's real claim — and run each as a
+   real cross-check via record_consistency_check. Examples of the kind of
+   thing to look for (illustrative, not a fixed checklist to blindly
+   repeat): does an independent numerical re-derivation actually match what
+   an adjudication claims was accepted; does a generated artifact's stated
+   caveats (e.g. a stale-span warning) actually match the real current state
+   rather than a stale one; does one agent cite a concern that another
+   agent's real review text does not actually support. Search the real
+   event text for each side of every comparison — do not assume consistency
+   and do not assume last run's specific findings still apply.
 4. If you find a genuine gap, flag it as INCONSISTENCY_FOUND with the real
    quoted text from both sides. If everything genuinely lines up, say
    CONSISTENT plainly — a clean audit is a real, useful result, not a

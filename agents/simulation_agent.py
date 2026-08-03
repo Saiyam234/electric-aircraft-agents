@@ -4,16 +4,17 @@ Per CLAUDE.md: "computational aerodynamic/structural simulation, plus
 software verification (unit-testing the flight controller/autopilot code
 itself — does it handle bad sensor input gracefully, does it fail safely)."
 
-REAL DATA THIS IS TESTED AGAINST RIGHT NOW: the aero/structural half has
-real, substantial material — baseline 89's stored config still shows the
-ORIGINAL pre-review numbers (CL_max=1.1, V_stall=12.55 m/s), while Airframe
-Engineer's real review (event 92) and Chief Integration's adjudication
+REAL DATA THIS IS TESTED AGAINST: whichever configuration baseline is most
+recent at run time (never a hardcoded id — fixed 2026-08-02 after this
+agent's own prompt was found still hardcoding baseline 89 by id, which would
+have silently ignored baseline 210's later real re-derivation). First real
+run (2026-07-31, against baseline 89): found the stored config still showed
+ORIGINAL pre-review numbers (CL_max=1.1, V_stall=12.55 m/s) while Airframe
+Engineer's real review (event 92) and Chief Integration's adjudication had
 corrected those (CL_max=1.0, V_stall=13.16 m/s, spar allowable 400 MPa after
-the requirement-29 hand-layup knockdown, safety factor ~8.6). The baseline
-record and the cluster's own adjudicated corrections currently disagree —
-Simulation Agent's self-test independently re-derives the corrected numbers
-via calculate() from scratch (not by trusting either the baseline text or
-the review text) and checks whether they actually hold.
+the requirement-29 hand-layup knockdown, safety factor ~8.6) — independently
+re-derived the corrected numbers via calculate() from scratch and confirmed
+they held up.
 
 WHAT IT WILL NEED ONCE AVAILABLE: the "software verification" half —
 unit-testing the flight controller/autopilot code for bad-input handling and
@@ -164,52 +165,51 @@ calculate() result is correct and your mental math is not to be reported.
 
 {engineering_math.format_formula_docs()}
 
-THE REAL DISCREPANCY YOU ARE CHECKING:
-Baseline 89's own stored config still lists the PRE-REVIEW numbers
-(CL_max=1.1, V_stall=12.55 m/s) from before Airframe Engineer's real review.
-Airframe Engineer's review (event 92 in the audit log) and Chief
-Integration's adjudication later corrected these: SD7003 airfoil, CL_max=1.0,
-CD0=0.025 at Re=230,548, giving V_stall=13.16 m/s and cruise shaft power
-34.5 W. The spar was resized to a two-cap CFRP box, 10x2 mm T300 UD caps at
-14 mm separation, giving at load factor n=4.0 a root bending moment of
-13.01 N·m, bending stress ~46.45 MPa against a 400 MPa allowable (T300 UD
-after the ±10° hand-layup knockdown required by requirement 29), safety
-factor ~8.6.
-
-Your job: independently re-derive these THREE numbers from scratch via
-calculate(), and report whether the cluster's adjudicated corrections
-actually hold up under an independent check — not whether the ORIGINAL
-pre-review baseline numbers were right (they weren't; that's already known
-and already corrected).
+WHAT YOU CHECK — ALWAYS THE LATEST BASELINE, NEVER A HARDCODED ID:
+Never assume a specific baseline id or a specific set of numbers is "the"
+config — baseline ids and their stored numbers change as the cluster
+re-derives them (e.g. baseline 89's original placeholder span vs. baseline
+210's later re-derivation to the real decided 1.40 m target). Your job is a
+real, repeatable capability: fetch whichever baseline is actually most
+recent, independently re-derive ITS stored numbers from scratch via
+calculate(), and report whether they actually hold up — you are not allowed
+to just read a claimed number and agree with it.
 
 Steps:
-1. get_baseline(89) to see the real MTOW (2.5 kg), wing area (0.231 m^2),
-   and wing semi-span you need as inputs.
-2. get_recent_events filtered to event_type="airframe_review_complete" to
-   read Airframe Engineer's full real review text (event 92) — do not rely
-   only on the summary above; read the actual event.
-3. Independently re-derive V_stall: calculate("stall_speed", mass_kg=2.5,
-   wing_area_m2=0.231, cl_max=1.0). Compare your real result to the claimed
-   13.16 m/s.
-4. Independently re-derive the root bending moment:
-   calculate("wing_root_bending_moment", ...) using the real semi-span and
-   load factor n=4.0 from the review. Compare to the claimed 13.01 N·m.
-5. Independently re-derive bending stress: first
-   calculate("spar_cap_second_moment", ...) for the stated 10x2 mm caps at
-   14 mm separation, then calculate("bending_stress", ...) using your own
-   moment from step 4. Compare to the claimed ~46.45 MPa, then
-   calculate("safety_factor", allowable_stress_mpa=400, actual_stress_mpa=
-   <your result>) and compare to the claimed ~8.6.
+1. Call list_baselines, then get_baseline on the most recent one whose
+   version starts "v0.1-config-draft". Read its real MTOW, wing area, and
+   wingspan/semi-span.
+2. get_recent_events filtered to event_type="airframe_review_complete" (and
+   similarly for other cluster review event types you find referenced in the
+   baseline's own log_event history) to see if a real structural/aero review
+   exists for THIS baseline. If the baseline you fetched has no such review
+   yet, or carries no real spar geometry (cap area, cap separation, load
+   factor), say so plainly — do not borrow numbers from a different,
+   older baseline's review to fill the gap.
+3. Independently re-derive V_stall: calculate("stall_speed", ...) from the
+   baseline's own stored mass, wing area, and CL_max. Compare your real
+   result to whatever the baseline itself claims for stall speed.
+4. If the baseline (or a real review event tied to it) states a load factor
+   and wing semi-span, independently re-derive the root bending moment via
+   calculate("wing_root_bending_moment", ...) and compare to its claimed
+   value.
+5. If real spar cap geometry (cap area, cap separation) exists for this
+   baseline, independently re-derive bending stress via
+   calculate("spar_cap_second_moment", ...) then calculate("bending_stress",
+   ...), then calculate("safety_factor", ...) against the real allowable
+   (checking whether the requirement-29 hand-layup knockdown was actually
+   applied to that allowable, not assumed). If no real spar geometry exists
+   yet, report CANNOT_VERIFY for this item and say exactly what's missing —
+   do not invent placeholder geometry to get a number.
 6. list_requirements(baseline_id=0) and confirm requirement 29 (hand-layup
    knockdown) is real and approved — do not take its existence on faith.
-7. For EACH of the three numbers (V_stall, bending moment, bending stress +
-   safety factor), call report_verification once with CONFIRMED if your
-   independent result matches within reasonable rounding, DISCREPANCY_FOUND
-   if it materially disagrees (state the real gap), or CANNOT_VERIFY only if
-   a genuinely required input is missing (not as a way to avoid doing the
-   math).
+7. For each number you were able to check, call report_verification once
+   with CONFIRMED if your independent result matches within reasonable
+   rounding, DISCREPANCY_FOUND if it materially disagrees (state the real
+   gap), or CANNOT_VERIFY if a genuinely required input is missing from this
+   baseline (not as a way to avoid doing the math).
 8. Finish with ONE log_event, event_type="simulation_complete", summarizing
-   all three outcomes plus a plain statement that the "software verification"
+   every outcome plus a plain statement that the "software verification"
    half of this role (unit-testing flight controller code) has nothing real
    to test against yet — no flight controller code or spec exists — so this
    run covers structural/aero verification only.

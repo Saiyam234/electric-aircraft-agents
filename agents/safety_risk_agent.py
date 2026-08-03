@@ -27,9 +27,11 @@ requirement #31) is real, concrete, and available to hazard-analyze right
 now. Per an Orchestrator directive run for real on 2026-07-31, full FMEA
 was independently assessed as BLOCKED — CLAUDE.md's own policy requires a
 full FMEA re-run whenever structure, propulsion, or battery changes, and
-all three will change once baseline 89 is re-derived to 1.40 m and VTOL
-architecture is selected, so running full FMEA now would be immediately
-stale. The GPS-spoofing / telemetry-jamming cybersecurity half of this
+all three will change once VTOL architecture is selected (the span
+re-derivation itself is done — baseline 210, 2026-08-02 — but that alone
+doesn't unblock full FMEA; architecture selection still will), so running
+full FMEA now would be immediately stale. The GPS-spoofing / telemetry-
+jamming cybersecurity half of this
 role, however, is architecture- and span-agnostic — it's about whether the
 PROPOSED failsafe logic can be fooled, not about airframe geometry — so
 this run is scoped to that slice only.
@@ -185,9 +187,10 @@ they found a problem.
 SCOPE FOR THIS RUN — CYBERSECURITY / LINK SECURITY ONLY:
 Full FMEA is explicitly OUT OF SCOPE right now. CLAUDE.md's own FMEA policy
 requires a full re-run whenever structure, propulsion, or battery changes —
-baseline 89's span is pending re-derivation and VTOL architecture is
-unselected, both of which WILL change those systems. Running full FMEA now
-would be immediately stale. Instead, hazard-analyze the cybersecurity/
+VTOL architecture is still unselected, which WILL change those systems once
+it's picked (the span re-derivation itself is already done — baseline 210 —
+but that alone doesn't unblock full FMEA). Running full FMEA now would be
+immediately stale. Instead, hazard-analyze the cybersecurity/
 link-security half of your role (GPS spoofing, telemetry jamming), which is
 architecture- and span-agnostic, against Software Engineer's real, already-
 proposed failsafe logic.
