@@ -576,6 +576,72 @@ data before being trusted.
     Critic, Safety & Risk) were updated to use it. Regression test added.
     Full suite: 61/61 passing.
   - Total real Wave 4 spend so far: $2.2609, 71 turns, 0 errors.
+  - WAVE 4 VERIFICATION BATCH (2026-08-03) — every agent whose code changed
+    in the 2026-08-02 review pass, plus the 3 new agents, all run for real
+    against baseline 210, in dependency order:
+    - Design Realization Agent: correctly fetched baseline 210 dynamically
+      and confirmed span MATCHES the 1.40 m target (no stale-span caveat
+      needed this time) — regenerated `fusion_scripts/wing_planform.py`
+      clean. $0.4287, 6 turns.
+    - Regulatory: dynamic fetch confirmed working; reused existing real KB
+      citations rather than re-searching; verdicts unchanged (weight-tier +
+      autonomy NEEDS_JURISDICTION_DECISION, LiPo COMPLIANT_LIKELY). $0.4797,
+      10 turns.
+    - Safety & Risk: same real GPS-spoofing UNMITIGATED finding
+      re-confirmed and re-escalated (expected — the underlying Software
+      Engineer proposal hasn't changed; only the FMEA-scoping reasoning was
+      fixed). $0.5325, 9 turns.
+    - Innovation Validator: confirmed reading baseline 210's real
+      `hover_bracket` field (the renamed key) correctly — numbers matched
+      exactly ("Matches baseline 210's hover_bracket exactly," its own
+      words). Verdict NEEDS_MORE_RESEARCH, unchanged reasoning. $0.5532,
+      13 turns.
+    - Simulation Agent: the generalized verification logic worked exactly
+      as designed — CONFIRMED V_stall (11.7484 m/s, exact match), but
+      correctly reported CANNOT_VERIFY on root bending moment and spar
+      stress/SF rather than importing baseline 89's Wave 2 numbers, because
+      baseline 210 genuinely has no spar geometry yet. Surfaced a real,
+      previously-unstated gap: Airframe Engineer's structural review of
+      baseline 210 is still owed. $0.4715, 10 turns.
+    - Manufacturing Manager (first real run): 5 real WebSearch-sourced BOM
+      items (2x Aloft Hobbies CFRP spar rod, Rock West Rohacell core,
+      Aircraft Spruce West System epoxy/hardener, RCJuice HobbyStar 4S
+      2200mAh battery matching baseline 210's pack spec) totaling $300.21
+      (computed by the tool, not the model). 6 architecture-dependent items
+      correctly left BLOCKED with real rationale (motors, ESCs, props,
+      mounts/tilt hardware, fuselage/tail, avionics). Also raised a real,
+      unprompted manufacturability flag: Rohacell's moisture sensitivity
+      and the unverified assumption that vacuum-bag infrastructure exists
+      (fiber volume fraction drops ~48%→~34% without it, invalidating
+      baseline 210's structure-mass assumptions). $1.3752, 25 turns.
+    - Physical Testing Agent (first real run): 4 real PLANNED tests
+      grounded in Simulation Agent's fresh numbers from the same batch
+      (stall-speed envelope, battery C-rate/thermal, charge-rate
+      compliance, BMS cutoff verification), 6 correctly BLOCKED tests each
+      with a specific real unblock condition (wing static load blocked on
+      the same spar-geometry gap Simulation Agent had just found).
+      Execution/data-analysis/sim-vs-real comparison explicitly not
+      attempted — stated plainly, not faked. $0.6281, 16 turns.
+    - Review & Critic: 7 cross-checks, ALL CONSISTENT — independently
+      verified that every other agent in this batch agreed with itself:
+      Simulation's V_stall vs. baseline 210, Innovation Validator's hover
+      math vs. `hover_bracket`, Design Realization's retracted stale-span
+      caveat, Physical Testing's/Simulation's/baseline's matching
+      description of the same spar gap, Manufacturing's battery line vs.
+      the real pack spec, Regulatory's jurisdiction blocker vs. Physical
+      Testing's mission-test blocker, and Safety & Risk's hazard target
+      fidelity against Software Engineer's actual proposal text. No
+      INCONSISTENCY_FOUND. Explicitly not a baseline sign-off. $1.2308,
+      48 turns.
+    - Literature Agent (first real run): checked `check_baseline_stamped
+      (210)` for real — false — and correctly wrote a `status_memo`, not an
+      `interim_document`. Real 11,468-char document at
+      `literature/status-memo-2026-08-03.md`, every figure traced to
+      baseline 210's real config, the live requirements table, or KB
+      entries pulled that run; cites 8 real sources. $0.6438, 12 turns.
+    - Batch total: $6.3435, 149 turns, 0 errors across all 9 runs. Full
+      suite 61/61 after the batch. This is the first time all 19 agents
+      have real, current-code, current-baseline output on record.
 
 Cluster messaging: CLAUDE.md's stated trigger for building it ("genuinely
 competing voices to arbitrate") has now technically been met — Wave 2 produced
@@ -624,6 +690,12 @@ still open — not decided by this note.
     real spar cap geometry, and requirement 29's hand-layup knockdown
     (Airframe's open objection, event 91, Wave 2) still hasn't been applied.
     A placeholder calc gives SF~8.7, but it isn't a real number yet.
+    Independently reconfirmed three more times in the 2026-08-03
+    verification batch (Simulation Agent CANNOT_VERIFY, Physical Testing
+    Agent BLOCKED its wing static-load test on exactly this, Review &
+    Critic cross-checked all three descriptions as CONSISTENT) — this is
+    now the clearest, most concretely actionable next real step:
+    **Airframe Engineer's structural review of baseline 210 is owed.**
   - Hover-time assumption (120 s) may be optimistic — a realistic
     takeoff+hover+landing+abort profile is closer to 3-4 min, which would
     push hover's share of mission energy past 40% and require the 0.35 kg
