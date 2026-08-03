@@ -86,13 +86,13 @@ ROSTER = [
     ("Concurrent Engineering Cluster", "Chief Integration Agent", "chief_integration_agent.py", "ChiefIntegrationAgent"),
     ("Concurrent Engineering Cluster", "Software Engineer", "software_engineer_agent.py", "SoftwareEngineer"),
     ("Concurrent Engineering Cluster", "Design Realization Agent", "design_realization_agent.py", "DesignRealizationAgent"),
-    ("Manufacturing", "Manufacturing Manager", None, None),
+    ("Manufacturing", "Manufacturing Manager", "manufacturing_manager_agent.py", "ManufacturingManager"),
     ("Verification & Validation", "Simulation Agent", "simulation_agent.py", "SimulationAgent"),
-    ("Verification & Validation", "Physical Testing Agent", None, None),
+    ("Verification & Validation", "Physical Testing Agent", "physical_testing_agent.py", "PhysicalTestingAgent"),
     ("Assurance Gate", "Review & Critic", "review_critic_agent.py", "ReviewCritic"),
     ("Assurance Gate", "Safety & Risk", "safety_risk_agent.py", "SafetyRisk"),
     ("Assurance Gate", "Regulatory", "regulatory_agent.py", "Regulatory"),
-    ("Literature", "Literature Agent", None, None),
+    ("Literature", "Literature Agent", "literature_agent.py", "LiteratureAgent"),
 ]
 
 

@@ -515,12 +515,56 @@ data before being trusted.
     flight-test jurisdiction, exactly as requirement #32 anticipates); LiPo
     handling COMPLIANT_LIKELY against requirements #25-28. Cost $0.6311,
     16 turns.
-  - Manufacturing Manager, Literature Agent, Physical Testing Agent — NOT
-    BUILT. The real Orchestrator run assessed all three as genuinely blocked
-    right now (no BOM without architecture-decided geometry; no baseline has
-    been stamped yet for an interim doc; no physical article exists to test)
-    rather than partially scoped like Wave 3 was — deferred on that basis,
-    not skipped arbitrarily.
+  - Manufacturing Manager, Literature Agent, Physical Testing Agent — BUILT
+    2026-08-02, on Saiyam's explicit direction to complete the roster despite
+    each one's real blocker still being open (no VTOL architecture, no
+    stamped baseline, no physical article). Each is scoped the same way
+    Safety & Risk's Wave 4 run was (a real, honest slice of the role, not a
+    full run against data that doesn't exist), not built to fabricate output:
+    - Manufacturing Manager: costs real, architecture-agnostic components
+      only (wing structure from the current baseline's real dimensions +
+      KB composite-layup evidence; the battery pack, a fixed input
+      regardless of VTOL mechanism) via real WebSearch-sourced
+      vendors/prices, and structurally REJECTS a costed line item with no
+      real source_url. Every architecture-dependent component (motors,
+      ESCs, mounts, tilt hardware, fuselage) is explicitly recorded as
+      BLOCKED with a stated reason, not silently omitted or guessed. Line
+      totals and the grand total are computed in Python by the tool itself,
+      never by the model.
+    - Physical Testing Agent: scoped to test PLANNING only (the one
+      genuinely article-independent quarter of its CLAUDE.md role) —
+      real calculate()-derived pass/fail thresholds grounded in Simulation
+      Agent's actual confirmed numbers, explicitly refusing execution, data
+      analysis, or sim-vs-real comparison, which have nothing real to run
+      against yet.
+    - Literature Agent: structurally checks storage.is_baseline_stamped()
+      itself (Python, not the model's say-so) before allowing
+      doc_type="interim_document" — since nothing is stamped, real output
+      is a dated, cited status memo instead, explicitly labeled as not the
+      CLAUDE.md milestone deliverable. Rejects a document under 1500 chars
+      or with no citation URLs.
+    All three also fixed to never hardcode a baseline id (see the review-pass
+    note below, which found and fixed the same bug in six other agents
+    first) and registered in backend/run_console.py's RUNNABLE_AGENTS and
+    backend/api.py's ROSTER, which had never listed the Wave 4 Assurance
+    Gate agents (Review & Critic, Safety & Risk, Regulatory) as dispatchable
+    either — a separate real gap fixed in the same pass.
+  - Wave 4 review pass (2026-08-02): systematic re-read of every built
+    agent's live PROMPT text (not just docstrings), triggered by finding
+    Configuration Synthesis Lead's own prompt still telling the model "the
+    reference aircraft has never been defined" after that was resolved
+    weeks earlier. Same bug found and fixed in six more agents — all
+    hardcoded `get_baseline(89)` or equivalent stale reasoning that baseline
+    210's later re-derivation broke: Design Realization Agent (would have
+    regenerated its Fusion 360 script from the old 1.25 m span), Regulatory,
+    Review & Critic (no `list_baselines` tool even existed on either),
+    Simulation Agent (whole verification step was frozen on one historical
+    check instead of being reusable), Safety & Risk (stale reasoning, not a
+    hardcoded id), and Innovation Validator (a second, independent bug:
+    required a `hover_power_bracket` key that baseline 210 actually stores
+    as `hover_bracket` — would have silently missed the current baseline).
+    Every fix cross-checked against baseline 210's actual real stored JSON,
+    not assumed. Full suite still 61/61 after every change in this pass.
   - A real bug surfaced during Review & Critic's run and independently
     corroborated by Design Realization Agent's earlier run: `get_recent_events`
     tools fetched only `limit` most-recent events THEN filtered by type in

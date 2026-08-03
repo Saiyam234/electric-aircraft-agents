@@ -47,6 +47,12 @@ RUNNABLE_AGENTS = {
     "SoftwareEngineer": {"module": "software_engineer_agent", "mode": "none"},
     "DesignRealizationAgent": {"module": "design_realization_agent", "mode": "none"},
     "SimulationAgent": {"module": "simulation_agent", "mode": "none"},
+    "ReviewCritic": {"module": "review_critic_agent", "mode": "none"},
+    "SafetyRisk": {"module": "safety_risk_agent", "mode": "none"},
+    "Regulatory": {"module": "regulatory_agent", "mode": "none"},
+    "ManufacturingManager": {"module": "manufacturing_manager_agent", "mode": "none"},
+    "PhysicalTestingAgent": {"module": "physical_testing_agent", "mode": "none"},
+    "LiteratureAgent": {"module": "literature_agent", "mode": "none"},
 }
 
 _lock = threading.Lock()
