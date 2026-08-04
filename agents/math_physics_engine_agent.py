@@ -134,7 +134,9 @@ clear written verdict: does this configuration close, and what specifically must
 
 
 async def main():
-    argparse.ArgumentParser(description="Math & Physics Engine — configuration validation pass").parse_args()
+    parser = argparse.ArgumentParser(description="Math & Physics Engine — configuration validation pass")
+    parser.add_argument("--message", help="A real message from Saiyam for this run (direct chat).")
+    args = parser.parse_args()
 
     options = agent_runtime.build_options(
         system_prompt=(
@@ -147,7 +149,7 @@ async def main():
         max_turns=60,
     )
 
-    stats = await agent_runtime.run_agent(AGENT_NAME, options, PROMPT)
+    stats = await agent_runtime.run_agent(AGENT_NAME, options, PROMPT, steer_message=args.message)
     print(f"\n===== DONE — cost ${stats['cost']:.4f} =====")
 
 

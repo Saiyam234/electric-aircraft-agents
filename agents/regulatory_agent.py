@@ -219,9 +219,11 @@ Steps:
 
 
 async def main():
-    argparse.ArgumentParser(
+    parser = argparse.ArgumentParser(
         description="Regulatory — compliance review pass (Assurance Gate)"
-    ).parse_args()
+    )
+    parser.add_argument("--message", help="A real message from Saiyam for this run (direct chat).")
+    args = parser.parse_args()
 
     def on_turn(turn: int):
         if turn == TURN_WARNING_THRESHOLD:
@@ -237,7 +239,7 @@ async def main():
         builtin_tools=["WebSearch"],
         max_turns=MAX_TURNS,
     )
-    stats = await agent_runtime.run_agent(AGENT_NAME, options, PROMPT, on_assistant_turn=on_turn)
+    stats = await agent_runtime.run_agent(AGENT_NAME, options, PROMPT, on_assistant_turn=on_turn, steer_message=args.message)
     print(f"\n===== DONE — cost ${stats['cost']:.4f} =====")
 
 

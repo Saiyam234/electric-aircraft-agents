@@ -215,6 +215,7 @@ async def main():
         help="A real directive to decompose, classify and act on. Omit to run the "
         "three-path self-test (decomposition + escalation + digest) instead.",
     )
+    parser.add_argument("--message", help="A real message from Saiyam for this run (direct chat).")
     args = parser.parse_args()
 
     prompt = build_directive_prompt(args.directive) if args.directive else SELF_TEST_PROMPT
@@ -232,7 +233,7 @@ async def main():
         max_turns=25,
     )
 
-    stats = await agent_runtime.run_agent("Orchestrator", options, prompt)
+    stats = await agent_runtime.run_agent("Orchestrator", options, prompt, steer_message=args.message)
     print(f"\n===== DONE — cost ${stats['cost']:.4f} =====")
 
 

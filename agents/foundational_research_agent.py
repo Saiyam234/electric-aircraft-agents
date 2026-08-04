@@ -171,12 +171,15 @@ source, don't include it as a precise claim.
 """
 
 
-async def research_topic(topic: str) -> dict:
+async def research_topic(topic: str, steer_message: str | None = None) -> dict:
     """Runs the full research flow for one topic.
 
     Returns a stats dict: cost, entries_created (counted from actual upsert_kb
     tool calls, not the agent's self-reported summary), and turns. Raises if
     the run itself errored out, so the caller can decide whether to retry.
+
+    `steer_message`, if given, is applied to every topic in this invocation —
+    a real message from Saiyam doesn't target one topic out of a batch.
     """
     topic_tag = slugify(topic)
     options = agent_runtime.build_options(
@@ -217,6 +220,7 @@ async def research_topic(topic: str) -> dict:
         options,
         build_prompt(topic, topic_tag),
         truncate=800,
+        steer_message=steer_message,
         on_tool_result=count_entries,
         on_assistant_turn=warn_if_running_long,
     )
@@ -232,7 +236,7 @@ async def research_topic(topic: str) -> dict:
     return stats
 
 
-async def research_topic_with_retry(topic: str, retries: int = 1) -> dict:
+async def research_topic_with_retry(topic: str, retries: int = 1, steer_message: str | None = None) -> dict:
     """Runs research_topic, retrying transient failures up to `retries` times.
 
     Never raises — a topic that still fails after retries comes back with
@@ -241,7 +245,7 @@ async def research_topic_with_retry(topic: str, retries: int = 1) -> dict:
     last_error: Exception | None = None
     for attempt in range(retries + 1):
         try:
-            stats = await research_topic(topic)
+            stats = await research_topic(topic, steer_message=steer_message)
             status = "partial" if stats.get("hit_turn_limit") else "ok"
             stats.update(topic=topic, status=status)
             return stats
@@ -267,6 +271,7 @@ async def main():
         action="store_true",
         help="Include all six foundational topics from CLAUDE.md (combine with --topic to add more)",
     )
+    parser.add_argument("--message", help="A real message from Saiyam for this run (direct chat).")
     args = parser.parse_args()
 
     topics = (CORE_TOPICS if args.all else []) + args.topic
@@ -278,7 +283,7 @@ async def main():
     results = []
     for topic in topics:
         print(f"\n===== TOPIC: {topic} =====")
-        results.append(await research_topic_with_retry(topic))
+        results.append(await research_topic_with_retry(topic, steer_message=args.message))
 
     total_cost = sum(r["cost"] for r in results)
     total_entries = sum(r["entries_created"] for r in results)

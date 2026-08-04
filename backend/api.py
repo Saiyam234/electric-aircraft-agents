@@ -534,7 +534,18 @@ def pipeline_info():
 def start_pipeline_run():
     body = request.get_json(force=True) or {}
     agents = body.get("agents")  # optional subset; defaults to full PIPELINE_ORDER
-    result = run_console.start_pipeline(agents)
+    message = body.get("message")  # optional real message attached to the first step
+    result = run_console.start_pipeline(agents, message)
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(result)
+
+
+@app.route("/api/agents/pipeline/<job_id>/message", methods=["POST"])
+def send_pipeline_message(job_id):
+    body = request.get_json(force=True) or {}
+    message = body.get("message", "")
+    result = run_console.send_pipeline_message(job_id, message)
     if "error" in result:
         return jsonify(result), 400
     return jsonify(result)
@@ -545,7 +556,8 @@ def start_agent_run():
     body = request.get_json(force=True) or {}
     agent = body.get("agent", "")
     user_input = body.get("input")
-    result = run_console.start_job(agent, user_input)
+    message = body.get("message")
+    result = run_console.start_job(agent, user_input, message)
     if "error" in result:
         return jsonify(result), 400
     return jsonify(result)

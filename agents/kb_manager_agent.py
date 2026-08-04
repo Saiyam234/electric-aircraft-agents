@@ -146,7 +146,8 @@ Then give a clear final summary of your classifications for every candidate pair
 
 async def main():
     parser = argparse.ArgumentParser(description="KB Manager — reconciliation + citation validation pass")
-    parser.parse_args()
+    parser.add_argument("--message", help="A real message from Saiyam for this run (direct chat).")
+    args = parser.parse_args()
 
     print("Fetching all KB entries...")
     ids = storage.list_kb_ids()
@@ -174,7 +175,8 @@ async def main():
 
     # truncate=None preserves this agent's original untruncated result printing.
     stats = await agent_runtime.run_agent(
-        "KBManager", options, build_prompt(entries, candidate_pairs, citation_results), truncate=None
+        "KBManager", options, build_prompt(entries, candidate_pairs, citation_results),
+        truncate=None, steer_message=args.message,
     )
 
     print(

@@ -150,7 +150,9 @@ Then give a short summary of what you proposed and why.
 
 
 async def main():
-    argparse.ArgumentParser(description="Systems Engineer — requirements definition pass").parse_args()
+    parser = argparse.ArgumentParser(description="Systems Engineer — requirements definition pass")
+    parser.add_argument("--message", help="A real message from Saiyam for this run (direct chat).")
+    args = parser.parse_args()
 
     options = agent_runtime.build_options(
         system_prompt=(
@@ -163,7 +165,7 @@ async def main():
         max_turns=40,
     )
 
-    stats = await agent_runtime.run_agent(AGENT_NAME, options, PROMPT)
+    stats = await agent_runtime.run_agent(AGENT_NAME, options, PROMPT, steer_message=args.message)
     print(f"\n===== DONE — cost ${stats['cost']:.4f} =====")
 
 

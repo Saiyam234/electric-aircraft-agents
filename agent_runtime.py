@@ -64,12 +64,31 @@ def build_options(
     )
 
 
+STEER_MESSAGE_TEMPLATE = """
+
+---
+REAL DIRECT MESSAGE FROM SAIYAM (sent this run, not part of your normal prompt):
+"{message}"
+
+Per CLAUDE.md's human-oversight rules, classify this before acting on it:
+- STEER: factored into how you approach this run, but still goes through your
+  normal proof/verification steps — you do not skip calculate()/search_kb/etc.
+  just because Saiyam said something.
+- DIRECTIVE-LEVEL CHANGE: a real change of scope/priority that should be
+  routed to the Orchestrator, not silently absorbed into this one run.
+If it's genuinely unclear which, say so plainly in your final summary and ask
+rather than guessing. State your classification in your final summary either
+way — this message and your classification of it are both being logged.
+"""
+
+
 async def run_agent(
     agent_name: str,
     options: ClaudeAgentOptions,
     prompt: str,
     *,
     truncate: int | None = DEFAULT_RESULT_TRUNCATE,
+    steer_message: str | None = None,
     on_tool_result: Callable[[str], None] | None = None,
     on_assistant_turn: Callable[[int], None] | None = None,
 ) -> dict:
@@ -77,6 +96,14 @@ async def run_agent(
 
     Brackets the run with storage.log_run_start/log_run_end so it's traceable
     in the audit log via a shared run_id.
+
+    `steer_message`, if given, is a real message from Saiyam for this specific
+    run (CLAUDE.md's "direct chat" capability). It's logged here in Python —
+    deterministically, before the agent even starts reasoning — rather than
+    left to the model to remember to log; the model still has to classify it
+    (steer vs. directive-level change) in its own summary, but the fact that
+    a real message was sent is never dependent on the model choosing to
+    record it.
 
     `on_tool_result` is called with each raw tool-result string BEFORE it's
     truncated for display — that ordering matters, since counters built on
@@ -94,6 +121,14 @@ async def run_agent(
     stats = {"cost": 0.0, "turns": 0, "is_error": False, "hit_turn_limit": False}
     assistant_turns = 0
     run_id = storage.log_run_start(agent_name)
+
+    if steer_message and steer_message.strip():
+        storage.log_event(
+            agent_name,
+            "direct_message_received",
+            f"REAL MESSAGE FROM SAIYAM (run_id={run_id}): {steer_message.strip()}",
+        )
+        prompt = prompt + STEER_MESSAGE_TEMPLATE.format(message=steer_message.strip())
 
     async with ClaudeSDKClient(options=options) as client:
         await client.query(prompt)

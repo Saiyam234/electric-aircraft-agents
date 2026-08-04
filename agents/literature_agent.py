@@ -257,9 +257,11 @@ Steps:
 
 
 async def main():
-    argparse.ArgumentParser(
+    parser = argparse.ArgumentParser(
         description="Literature Agent — real dated status memo (not the CLAUDE.md interim document; no baseline is stamped yet)"
-    ).parse_args()
+    )
+    parser.add_argument("--message", help="A real message from Saiyam for this run (direct chat).")
+    args = parser.parse_args()
 
     options = agent_runtime.build_options(
         system_prompt=(
@@ -271,7 +273,7 @@ async def main():
         allowed_tools=ALLOWED_TOOLS,
         max_turns=MAX_TURNS,
     )
-    stats = await agent_runtime.run_agent(AGENT_NAME, options, PROMPT)
+    stats = await agent_runtime.run_agent(AGENT_NAME, options, PROMPT, steer_message=args.message)
     print(f"\n===== DONE — cost ${stats['cost']:.4f} =====")
 
 

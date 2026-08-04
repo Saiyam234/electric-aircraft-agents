@@ -184,7 +184,9 @@ or the Configuration Synthesis Lead to break the tie on.
 
 
 async def main():
-    argparse.ArgumentParser(description="Chief Integration Agent — adjudicate cluster proposals").parse_args()
+    parser = argparse.ArgumentParser(description="Chief Integration Agent — adjudicate cluster proposals")
+    parser.add_argument("--message", help="A real message from Saiyam for this run (direct chat).")
+    args = parser.parse_args()
 
     options = agent_runtime.build_options(
         system_prompt=(
@@ -198,7 +200,7 @@ async def main():
         max_turns=60,
     )
 
-    stats = await agent_runtime.run_agent(AGENT_NAME, options, PROMPT)
+    stats = await agent_runtime.run_agent(AGENT_NAME, options, PROMPT, steer_message=args.message)
     print(f"\n===== DONE — cost ${stats['cost']:.4f} =====")
 
 

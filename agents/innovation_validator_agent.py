@@ -233,6 +233,7 @@ async def main():
         help="A real candidate innovation to validate. Omit to run the self-test "
         "(re-derives the current baseline's own rotor-size hover-power finding independently).",
     )
+    parser.add_argument("--message", help="A real message from Saiyam for this run (direct chat).")
     args = parser.parse_args()
 
     innovation = args.innovation or SELF_TEST_INNOVATION
@@ -246,7 +247,7 @@ async def main():
         allowed_tools=ALLOWED_TOOLS,
         max_turns=40,
     )
-    stats = await agent_runtime.run_agent(AGENT_NAME, options, prompt)
+    stats = await agent_runtime.run_agent(AGENT_NAME, options, prompt, steer_message=args.message)
     print(f"\n===== DONE — cost ${stats['cost']:.4f} =====")
 
 

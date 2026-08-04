@@ -85,6 +85,12 @@ _jobs: dict[str, dict] = {}
 MAX_JOB_HISTORY = 30
 
 
+def _with_message(args: list[str], message: str | None) -> list[str]:
+    if message and message.strip():
+        return [*args, "--message", message.strip()]
+    return args
+
+
 def _run_job(job_id: str, module: str, args: list[str]) -> None:
     # -u: unbuffered stdout/stderr. Without it, a piped (non-tty) child fully
     # buffers its output, so nothing streams to the UI until the process
@@ -119,7 +125,7 @@ def _run_job(job_id: str, module: str, args: list[str]) -> None:
             _jobs[job_id]["finished_at"] = time.time()
 
 
-def start_job(agent: str, user_input: str | None) -> dict:
+def start_job(agent: str, user_input: str | None, message: str | None = None) -> dict:
     if agent not in RUNNABLE_AGENTS:
         return {"error": f"'{agent}' is not a runnable agent. Known: {sorted(RUNNABLE_AGENTS)}"}
 
@@ -137,7 +143,8 @@ def start_job(agent: str, user_input: str | None) -> dict:
         if not user_input or not user_input.strip():
             return {"error": "This agent requires a candidate innovation to validate."}
         args = ["--innovation", user_input.strip()]
-    # mode == "none": no args, ignores user_input if any was sent
+    # mode == "none": no directive/topic/innovation arg, but --message still applies below
+    args = _with_message(args, message)
 
     job_id = str(uuid.uuid4())
     with _lock:
@@ -148,6 +155,7 @@ def start_job(agent: str, user_input: str | None) -> dict:
             "module": spec["module"],
             "mode": spec["mode"],
             "input": user_input,
+            "message": message,
             "status": "running",
             "output": [],
             "started_at": time.time(),
@@ -180,12 +188,21 @@ def _run_pipeline(job_id: str, agents: list[str]) -> None:
     waiting for each to finish before starting the next — these agents
     read/write shared D1 state, so running them concurrently would race.
     Stops on the first real failure rather than cascading a broken run
-    through the rest of the sequence."""
+    through the rest of the sequence.
+
+    Before each step launches, checks the job's pending_message — set either
+    at pipeline start or live via send_pipeline_message while a prior step
+    is still running — and attaches it to that step as a real --message,
+    then clears it so it isn't reused for a later step by accident."""
     for agent in agents:
         spec = RUNNABLE_AGENTS[agent]
+        with _lock:
+            step_message = _jobs[job_id].get("pending_message")
+            _jobs[job_id]["pending_message"] = None
         step = {
             "agent": agent,
             "module": spec["module"],
+            "message": step_message,
             "status": "running",
             "output": [],
             "started_at": time.time(),
@@ -197,7 +214,7 @@ def _run_pipeline(job_id: str, agents: list[str]) -> None:
             step_index = len(_jobs[job_id]["steps"]) - 1
             _jobs[job_id]["current_step"] = step_index
 
-        cmd = [PYTHON, "-u", "-m", f"agents.{spec['module']}"]
+        cmd = [PYTHON, "-u", "-m", f"agents.{spec['module']}", *_with_message([], step_message)]
         env = {**os.environ, "PYTHONUNBUFFERED": "1"}
         try:
             proc = subprocess.Popen(
@@ -236,13 +253,18 @@ def _run_pipeline(job_id: str, agents: list[str]) -> None:
         _jobs[job_id]["finished_at"] = time.time()
 
 
-def start_pipeline(agents: list[str] | None = None) -> dict:
+def start_pipeline(agents: list[str] | None = None, message: str | None = None) -> dict:
     """Real sequential dispatch of multiple agents in one job. `agents`
     defaults to the full real PIPELINE_ORDER; pass a subset (still in
     PIPELINE_ORDER's relative order) to run only some steps. Every agent
     named must be RUNNABLE_AGENTS with mode='none' or 'innovation' (which
     self-tests with no input) — 'directive'/'topic' agents can't run
-    unattended and are rejected here."""
+    unattended and are rejected here.
+
+    `message`, if given, is attached to the FIRST step only (a real message
+    from Saiyam sent before the run started) — to reach a later step, use
+    send_pipeline_message once the run is in progress instead of assuming
+    every agent wants the same note."""
     selected = list(agents) if agents else list(PIPELINE_ORDER)
     unknown = [a for a in selected if a not in RUNNABLE_AGENTS]
     if unknown:
@@ -263,6 +285,7 @@ def start_pipeline(agents: list[str] | None = None) -> dict:
             "status": "running",
             "steps": [],
             "current_step": -1,
+            "pending_message": message,
             "started_at": time.time(),
             "finished_at": None,
         }
@@ -271,6 +294,26 @@ def start_pipeline(agents: list[str] | None = None) -> dict:
     thread = threading.Thread(target=_run_pipeline, args=(job_id, selected), daemon=True)
     thread.start()
     return {"job_id": job_id}
+
+
+def send_pipeline_message(job_id: str, message: str) -> dict:
+    """Attaches a real message to whichever step hasn't launched its
+    subprocess yet — the pipeline is a sequence of real one-shot batch runs,
+    not a live conversation, so this can't interrupt a step already in
+    progress; it queues for the next one, same as CLAUDE.md's direct-chat
+    model (a message lands before an agent acts, not mid-thought)."""
+    if not message or not message.strip():
+        return {"error": "Message is empty."}
+    with _lock:
+        job = _jobs.get(job_id)
+        if job is None:
+            return {"error": "Unknown job_id."}
+        if job["kind"] != "pipeline":
+            return {"error": "Not a pipeline job."}
+        if job["status"] != "running":
+            return {"error": "This pipeline has already finished — nothing left to send it to."}
+        job["pending_message"] = message.strip()
+    return {"ok": True}
 
 
 def get_job(job_id: str) -> dict | None:
