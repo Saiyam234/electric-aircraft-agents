@@ -283,13 +283,22 @@ _BASELINE_MENTION_RE = re.compile(r"baseline[_\s]*(?:id)?\s*[=:#]?\s*(\d+)", re.
 _REQUIREMENT_MENTION_RE = re.compile(r"requirement[s]?\s*#?\s*(\d+)", re.IGNORECASE)
 
 
-def _artifact_mentions(description: str) -> list[str]:
-    """Real artifacts named in an event's own description text — not a
-    schema field (related_baseline_id/related_requirement_id exist in the
-    audit_log table but no agent tool ever populates them, so every row has
-    them NULL; the only real signal is the free text every agent already
-    writes). Returns keys like "baseline 210" or "requirement 29"."""
+def _artifact_mentions(event: dict) -> list[str]:
+    """Real artifacts an event is genuinely about. Prefers the structured
+    related_baseline_id/related_requirement_id columns (populated by
+    agent_tools.make_log_event_tool as of 2026-08-03) when an agent set
+    them; falls back to regex-parsing the free-text description for every
+    event from before that — which is still most of them, and will remain
+    the only signal for any agent that doesn't bother setting the real
+    field. Returns keys like "baseline 210" or "requirement 29"."""
     mentions = []
+    if event.get("related_baseline_id"):
+        mentions.append(f"baseline {event['related_baseline_id']}")
+    if event.get("related_requirement_id"):
+        mentions.append(f"requirement {event['related_requirement_id']}")
+    if mentions:
+        return mentions
+    description = event.get("description", "")
     for m in _BASELINE_MENTION_RE.finditer(description):
         mentions.append(f"baseline {m.group(1)}")
     for m in _REQUIREMENT_MENTION_RE.finditer(description):
@@ -312,7 +321,7 @@ def agents_graph():
         display_name = _LOG_NAME_TO_DISPLAY.get(e["agent"])
         if not display_name or e["event_type"] in ("agent_start", "agent_end"):
             continue
-        for artifact in _artifact_mentions(e["description"]):
+        for artifact in _artifact_mentions(e):
             by_artifact.setdefault(artifact, []).append({
                 "agent": display_name, "timestamp": e["timestamp"],
                 "event_id": e["id"], "description": e["description"],
@@ -459,11 +468,10 @@ def logs():
     ])
 
 
-@app.route("/api/agents/runnable")
-def runnable_agents():
-    """Every real, dispatchable agent, its real CLI input mode, and real
-    historical cost stats computed from actual past runs — never a fabricated
-    estimate. Agents with zero real runs simply have no cost hint yet."""
+def _real_agent_costs() -> dict[str, list[float]]:
+    """Real historical cost per agent, parsed from real agent_end events —
+    never a fabricated estimate. Shared by /api/agents/runnable and
+    /api/agents/pipeline so both report the same real numbers."""
     events = storage.get_audit_log(limit=500)
     costs: dict[str, list[float]] = {}
     for e in events:
@@ -475,18 +483,60 @@ def runnable_agents():
                     costs.setdefault(e["agent"], []).append(float(tok[6:]))
                 except ValueError:
                     pass
+    return costs
 
-    result = []
-    for name, spec in run_console.RUNNABLE_AGENTS.items():
-        vals = costs.get(name, [])
-        result.append({
-            "agent": name,
-            "mode": spec["mode"],
-            "run_count": len(vals),
-            "avg_cost": round(sum(vals) / len(vals), 4) if vals else None,
-            "min_cost": round(min(vals), 4) if vals else None,
-            "max_cost": round(max(vals), 4) if vals else None,
-        })
+
+def _agent_cost_stats(name: str, mode: str, costs: dict[str, list[float]]) -> dict:
+    vals = costs.get(name, [])
+    return {
+        "agent": name,
+        "mode": mode,
+        "run_count": len(vals),
+        "avg_cost": round(sum(vals) / len(vals), 4) if vals else None,
+        "min_cost": round(min(vals), 4) if vals else None,
+        "max_cost": round(max(vals), 4) if vals else None,
+    }
+
+
+@app.route("/api/agents/runnable")
+def runnable_agents():
+    """Every real, dispatchable agent, its real CLI input mode, and real
+    historical cost stats computed from actual past runs — never a fabricated
+    estimate. Agents with zero real runs simply have no cost hint yet."""
+    costs = _real_agent_costs()
+    result = [
+        _agent_cost_stats(name, spec["mode"], costs)
+        for name, spec in run_console.RUNNABLE_AGENTS.items()
+    ]
+    return jsonify(result)
+
+
+@app.route("/api/agents/pipeline")
+def pipeline_info():
+    """The real default pipeline order (CLAUDE.md's Wave 1-4 dependency
+    order) plus real historical cost stats per step, so the UI can show a
+    real total-cost estimate before anyone confirms a run."""
+    costs = _real_agent_costs()
+    steps = [
+        _agent_cost_stats(name, run_console.RUNNABLE_AGENTS[name]["mode"], costs)
+        for name in run_console.PIPELINE_ORDER
+    ]
+    known = [s["avg_cost"] for s in steps if s["avg_cost"] is not None]
+    return jsonify({
+        "order": run_console.PIPELINE_ORDER,
+        "steps": steps,
+        "estimated_total_cost": round(sum(known), 4) if known else None,
+        "steps_with_no_history": sum(1 for s in steps if s["avg_cost"] is None),
+    })
+
+
+@app.route("/api/agents/pipeline/run", methods=["POST"])
+def start_pipeline_run():
+    body = request.get_json(force=True) or {}
+    agents = body.get("agents")  # optional subset; defaults to full PIPELINE_ORDER
+    result = run_console.start_pipeline(agents)
+    if "error" in result:
+        return jsonify(result), 400
     return jsonify(result)
 
 

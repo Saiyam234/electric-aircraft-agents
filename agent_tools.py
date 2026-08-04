@@ -66,11 +66,34 @@ async def search_kb_tool(args):
 def make_log_event_tool(agent_name: str):
     """Factory — the audit log records which agent acted, so the name has to be
     bound per agent rather than passed by the model (which could then misreport
-    who did what)."""
+    who did what).
 
-    @tool("log_event", "Log a summary event to the audit log", {"event_type": str, "description": str})
+    related_baseline_id/related_requirement_id are real columns on audit_log
+    that no agent tool has ever populated — every cross-agent reference (e.g.
+    the Agents-view provenance graph) has had to regex-parse baseline/
+    requirement numbers out of free-text descriptions instead. Both are
+    optional here (0 = not applicable) so this stays backward compatible;
+    an agent whose finding is genuinely tied to a specific baseline or
+    requirement can now say so structurally instead of only in prose."""
+
+    @tool(
+        "log_event",
+        "Log a summary event to the audit log. related_baseline_id/related_requirement_id "
+        "are optional (0 = not applicable) — set them when this event is genuinely about a "
+        "specific real baseline or requirement, so other agents can find it structurally "
+        "rather than by searching your description text.",
+        {"event_type": str, "description": str, "related_baseline_id": float, "related_requirement_id": float},
+    )
     async def log_event_tool(args):
-        storage.log_event(agent_name, args["event_type"], args["description"])
+        baseline_id = int(args.get("related_baseline_id", 0) or 0) or None
+        requirement_id = int(args.get("related_requirement_id", 0) or 0) or None
+        storage.log_event(
+            agent_name,
+            args["event_type"],
+            args["description"],
+            related_baseline_id=baseline_id,
+            related_requirement_id=requirement_id,
+        )
         return {"content": [{"type": "text", "text": "Logged event"}]}
 
     return log_event_tool

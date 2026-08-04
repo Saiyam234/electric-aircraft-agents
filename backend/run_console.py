@@ -55,6 +55,31 @@ RUNNABLE_AGENTS = {
     "LiteratureAgent": {"module": "literature_agent", "mode": "none"},
 }
 
+# The real dependency order this project's own runs have actually used
+# (CLAUDE.md's Wave 1-4 structure) — config before validation before
+# review before assurance before literature. Orchestrator and Foundational
+# Research Agent are excluded: both require a real directive/topic input,
+# so they don't fit an unattended sequential run.
+PIPELINE_ORDER = [
+    "KBManager",
+    "SystemsEngineer",
+    "ConfigurationSynthesisLead",
+    "MathPhysicsEngine",
+    "AirframeEngineer",
+    "PropulsionPowerEngineer",
+    "ChiefIntegrationAgent",
+    "InnovationValidator",
+    "SoftwareEngineer",
+    "DesignRealizationAgent",
+    "SimulationAgent",
+    "ManufacturingManager",
+    "PhysicalTestingAgent",
+    "ReviewCritic",
+    "SafetyRisk",
+    "Regulatory",
+    "LiteratureAgent",
+]
+
 _lock = threading.Lock()
 _jobs: dict[str, dict] = {}
 MAX_JOB_HISTORY = 30
@@ -118,6 +143,7 @@ def start_job(agent: str, user_input: str | None) -> dict:
     with _lock:
         _jobs[job_id] = {
             "id": job_id,
+            "kind": "single",
             "agent": agent,
             "module": spec["module"],
             "mode": spec["mode"],
@@ -129,16 +155,120 @@ def start_job(agent: str, user_input: str | None) -> dict:
             "exit_code": None,
             "pid": None,
         }
-        # Bound memory: drop the oldest finished jobs once history grows large.
-        if len(_jobs) > MAX_JOB_HISTORY:
-            finished = sorted(
-                (j for j in _jobs.values() if j["status"] != "running"),
-                key=lambda j: j["started_at"],
-            )
-            for j in finished[: len(_jobs) - MAX_JOB_HISTORY]:
-                del _jobs[j["id"]]
+        _evict_old_jobs()
 
     thread = threading.Thread(target=_run_job, args=(job_id, spec["module"], args), daemon=True)
+    thread.start()
+    return {"job_id": job_id}
+
+
+def _evict_old_jobs() -> None:
+    """Caller must hold _lock. Bounds memory by dropping the oldest finished
+    jobs once history grows large — shared by both single-agent and
+    pipeline job creation."""
+    if len(_jobs) > MAX_JOB_HISTORY:
+        finished = sorted(
+            (j for j in _jobs.values() if j["status"] != "running"),
+            key=lambda j: j["started_at"],
+        )
+        for j in finished[: len(_jobs) - MAX_JOB_HISTORY]:
+            del _jobs[j["id"]]
+
+
+def _run_pipeline(job_id: str, agents: list[str]) -> None:
+    """Runs each agent's real CLI entrypoint one at a time, in order,
+    waiting for each to finish before starting the next — these agents
+    read/write shared D1 state, so running them concurrently would race.
+    Stops on the first real failure rather than cascading a broken run
+    through the rest of the sequence."""
+    for agent in agents:
+        spec = RUNNABLE_AGENTS[agent]
+        step = {
+            "agent": agent,
+            "module": spec["module"],
+            "status": "running",
+            "output": [],
+            "started_at": time.time(),
+            "finished_at": None,
+            "exit_code": None,
+        }
+        with _lock:
+            _jobs[job_id]["steps"].append(step)
+            step_index = len(_jobs[job_id]["steps"]) - 1
+            _jobs[job_id]["current_step"] = step_index
+
+        cmd = [PYTHON, "-u", "-m", f"agents.{spec['module']}"]
+        env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                cwd=REPO_ROOT,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                env=env,
+            )
+            for line in proc.stdout:
+                with _lock:
+                    _jobs[job_id]["steps"][step_index]["output"].append(line.rstrip("\n"))
+            code = proc.wait()
+            with _lock:
+                _jobs[job_id]["steps"][step_index]["status"] = "done" if code == 0 else "error"
+                _jobs[job_id]["steps"][step_index]["exit_code"] = code
+                _jobs[job_id]["steps"][step_index]["finished_at"] = time.time()
+            if code != 0:
+                with _lock:
+                    _jobs[job_id]["status"] = "error"
+                    _jobs[job_id]["finished_at"] = time.time()
+                return
+        except Exception as exc:  # noqa: BLE001 — surface, never crash the server
+            with _lock:
+                _jobs[job_id]["steps"][step_index]["status"] = "error"
+                _jobs[job_id]["steps"][step_index]["output"].append(f"[run_console] failed to launch: {exc}")
+                _jobs[job_id]["steps"][step_index]["finished_at"] = time.time()
+                _jobs[job_id]["status"] = "error"
+                _jobs[job_id]["finished_at"] = time.time()
+            return
+
+    with _lock:
+        _jobs[job_id]["status"] = "done"
+        _jobs[job_id]["finished_at"] = time.time()
+
+
+def start_pipeline(agents: list[str] | None = None) -> dict:
+    """Real sequential dispatch of multiple agents in one job. `agents`
+    defaults to the full real PIPELINE_ORDER; pass a subset (still in
+    PIPELINE_ORDER's relative order) to run only some steps. Every agent
+    named must be RUNNABLE_AGENTS with mode='none' or 'innovation' (which
+    self-tests with no input) — 'directive'/'topic' agents can't run
+    unattended and are rejected here."""
+    selected = list(agents) if agents else list(PIPELINE_ORDER)
+    unknown = [a for a in selected if a not in RUNNABLE_AGENTS]
+    if unknown:
+        return {"error": f"Unknown agent(s): {unknown}"}
+    needs_input = [a for a in selected if RUNNABLE_AGENTS[a]["mode"] == "directive" or RUNNABLE_AGENTS[a]["mode"] == "topic"]
+    if needs_input:
+        return {"error": f"These agents need a real directive/topic and can't run unattended in a pipeline: {needs_input}"}
+    if not selected:
+        return {"error": "No agents selected."}
+
+    job_id = str(uuid.uuid4())
+    with _lock:
+        _jobs[job_id] = {
+            "id": job_id,
+            "kind": "pipeline",
+            "agent": "Pipeline",
+            "agents": selected,
+            "status": "running",
+            "steps": [],
+            "current_step": -1,
+            "started_at": time.time(),
+            "finished_at": None,
+        }
+        _evict_old_jobs()
+
+    thread = threading.Thread(target=_run_pipeline, args=(job_id, selected), daemon=True)
     thread.start()
     return {"job_id": job_id}
 
@@ -148,13 +278,22 @@ def get_job(job_id: str) -> dict | None:
         job = _jobs.get(job_id)
         if job is None:
             return None
+        if job["kind"] == "pipeline":
+            steps = [dict(s, output=list(s["output"])) for s in job["steps"]]
+            return dict(job, steps=steps)
         return dict(job, output=list(job["output"]))
 
 
 def list_jobs() -> list[dict]:
     with _lock:
         rows = sorted(_jobs.values(), key=lambda j: j["started_at"], reverse=True)
-        return [
-            {k: v for k, v in j.items() if k != "output"} | {"output_lines": len(j["output"])}
-            for j in rows
-        ]
+        result = []
+        for j in rows:
+            if j["kind"] == "pipeline":
+                summary = {k: v for k, v in j.items() if k != "steps"}
+                summary["step_count"] = len(j["steps"])
+            else:
+                summary = {k: v for k, v in j.items() if k != "output"}
+                summary["output_lines"] = len(j["output"])
+            result.append(summary)
+        return result
