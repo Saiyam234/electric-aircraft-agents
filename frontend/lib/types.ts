@@ -124,14 +124,62 @@ export interface RunnableAgent {
 
 export interface RunJob {
   id: string;
+  kind: "single";
   agent: string;
   module: string;
   mode: RunMode;
   input: string | null;
+  message: string | null;
   status: "running" | "done" | "error";
   output: string[];
   started_at: number;
   finished_at: number | null;
   exit_code: number | null;
   pid: number | null;
+  cost: number | null;
+  turns: number | null;
+}
+
+export interface PipelineStep {
+  agent: string;
+  module: string;
+  message: string | null;
+  status: "running" | "done" | "error";
+  output: string[];
+  started_at: number;
+  finished_at: number | null;
+  exit_code: number | null;
+  cost: number | null;
+  turns: number | null;
+}
+
+export interface PipelineJob {
+  id: string;
+  kind: "pipeline";
+  agent: "Pipeline";
+  agents: string[];
+  status: "running" | "done" | "error";
+  steps: PipelineStep[];
+  current_step: number;
+  pending_message: string | null;
+  started_at: number;
+  finished_at: number | null;
+}
+
+export type RunJobOrPipeline = RunJob | PipelineJob;
+
+export interface PipelineStepCost {
+  agent: string;
+  mode: RunMode;
+  run_count: number;
+  avg_cost: number | null;
+  min_cost: number | null;
+  max_cost: number | null;
+}
+
+export interface PipelineInfo {
+  order: string[];
+  steps: PipelineStepCost[];
+  estimated_total_cost: number | null;
+  steps_with_no_history: number;
 }

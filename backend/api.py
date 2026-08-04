@@ -312,12 +312,19 @@ def agents_graph():
     real output another agent's real run actually touched, reconstructed by
     correlating which baseline/requirement numbers show up in whose event
     descriptions, in real chronological order. An edge only exists if two
-    different agents' real events both named the same real artifact."""
+    different agents' real events both named the same real artifact.
+
+    ?since=<ISO timestamp> scopes this to real events at or after that time —
+    used by the pipeline UI to show only what a specific run actually
+    communicated, not this project's entire history repeated on every poll."""
+    since = request.args.get("since")
     events = storage.get_audit_log(limit=1000)
     chrono = list(reversed(events))  # get_audit_log is DESC; oldest-first for real sequence
 
     by_artifact: dict[str, list[dict]] = {}
     for e in chrono:
+        if since and e["timestamp"] < since:
+            continue
         display_name = _LOG_NAME_TO_DISPLAY.get(e["agent"])
         if not display_name or e["event_type"] in ("agent_start", "agent_end"):
             continue

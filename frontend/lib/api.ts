@@ -5,9 +5,10 @@ import type {
   KbEntry,
   LogEvent,
   Overview,
+  PipelineInfo,
   RequirementsResponse,
   RosterAgent,
-  RunJob,
+  RunJobOrPipeline,
   RunnableAgent,
 } from "./types";
 
@@ -54,7 +55,14 @@ export const api = {
   kbCount: () => get<{ total: number }>("/api/kb/count"),
   logs: (limit = 150) => get<LogEvent[]>(`/api/logs?limit=${limit}`),
   runnableAgents: () => get<RunnableAgent[]>("/api/agents/runnable"),
-  startRun: (agent: string, input: string | null) =>
-    post<{ job_id: string }>("/api/agents/run", { agent, input }),
-  getRun: (jobId: string) => get<RunJob>(`/api/agents/run/${jobId}`),
+  startRun: (agent: string, input: string | null, message?: string | null) =>
+    post<{ job_id: string }>("/api/agents/run", { agent, input, message }),
+  getRun: (jobId: string) => get<RunJobOrPipeline>(`/api/agents/run/${jobId}`),
+  pipelineInfo: () => get<PipelineInfo>("/api/agents/pipeline"),
+  startPipeline: (agents?: string[], message?: string | null) =>
+    post<{ job_id: string }>("/api/agents/pipeline/run", { agents, message }),
+  sendPipelineMessage: (jobId: string, message: string) =>
+    post<{ ok: true }>(`/api/agents/pipeline/${jobId}/message`, { message }),
+  agentsGraphSince: (sinceIso: string) =>
+    get<AgentGraphResponse>(`/api/agents/graph?since=${encodeURIComponent(sinceIso)}`),
 };

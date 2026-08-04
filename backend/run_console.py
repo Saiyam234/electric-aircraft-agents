@@ -12,12 +12,17 @@ user input passed to a shell).
 This is NOT a chat interface. The underlying agents are one-shot batch
 processes, not conversational sessions — an agent runs once against real
 current state and produces one real result. Representing this as live
-back-and-forth chat would misrepresent what the system actually is.
+back-and-forth chat would misrepresent what the system actually is. A real
+message (CLAUDE.md's "direct chat") can be attached before a run starts —
+see start_job/start_pipeline/send_pipeline_message — but it can't interrupt
+a run already in progress, only be classified once at the start of the next
+one; that's a real, load-bearing distinction, not a technicality.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -115,9 +120,12 @@ def _run_job(job_id: str, module: str, args: list[str]) -> None:
                 _jobs[job_id]["output"].append(line.rstrip("\n"))
         code = proc.wait()
         with _lock:
+            summary = _parse_run_summary(_jobs[job_id]["output"])
             _jobs[job_id]["status"] = "done" if code == 0 else "error"
             _jobs[job_id]["exit_code"] = code
             _jobs[job_id]["finished_at"] = time.time()
+            _jobs[job_id]["cost"] = summary["cost"]
+            _jobs[job_id]["turns"] = summary["turns"]
     except Exception as exc:  # noqa: BLE001 — surface any launch failure to the UI, never crash the server
         with _lock:
             _jobs[job_id]["status"] = "error"
@@ -162,6 +170,8 @@ def start_job(agent: str, user_input: str | None, message: str | None = None) ->
             "finished_at": None,
             "exit_code": None,
             "pid": None,
+            "cost": None,
+            "turns": None,
         }
         _evict_old_jobs()
 
@@ -181,6 +191,21 @@ def _evict_old_jobs() -> None:
         )
         for j in finished[: len(_jobs) - MAX_JOB_HISTORY]:
             del _jobs[j["id"]]
+
+
+_SUMMARY_LINE_RE = re.compile(r"turns=(\d+)\s+cost=\$([\d.]+)")
+
+
+def _parse_run_summary(output_lines: list[str]) -> dict:
+    """Real cost/turns for a finished step, parsed once here in Python from
+    agent_runtime.run_agent's own printed summary line — rather than making
+    the frontend regex-scrape raw stdout for something that's already a real,
+    structured number by the time the process exits."""
+    for line in reversed(output_lines):
+        m = _SUMMARY_LINE_RE.search(line)
+        if m:
+            return {"turns": int(m.group(1)), "cost": float(m.group(2))}
+    return {"turns": None, "cost": None}
 
 
 def _run_pipeline(job_id: str, agents: list[str]) -> None:
@@ -208,6 +233,8 @@ def _run_pipeline(job_id: str, agents: list[str]) -> None:
             "started_at": time.time(),
             "finished_at": None,
             "exit_code": None,
+            "cost": None,
+            "turns": None,
         }
         with _lock:
             _jobs[job_id]["steps"].append(step)
@@ -231,9 +258,12 @@ def _run_pipeline(job_id: str, agents: list[str]) -> None:
                     _jobs[job_id]["steps"][step_index]["output"].append(line.rstrip("\n"))
             code = proc.wait()
             with _lock:
+                summary = _parse_run_summary(_jobs[job_id]["steps"][step_index]["output"])
                 _jobs[job_id]["steps"][step_index]["status"] = "done" if code == 0 else "error"
                 _jobs[job_id]["steps"][step_index]["exit_code"] = code
                 _jobs[job_id]["steps"][step_index]["finished_at"] = time.time()
+                _jobs[job_id]["steps"][step_index]["cost"] = summary["cost"]
+                _jobs[job_id]["steps"][step_index]["turns"] = summary["turns"]
             if code != 0:
                 with _lock:
                     _jobs[job_id]["status"] = "error"
