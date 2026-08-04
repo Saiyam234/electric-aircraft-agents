@@ -5,12 +5,14 @@ import type { AgentGraphEdge, RosterAgent } from "@/lib/types";
 import { api } from "@/lib/api";
 import { DIVISION_COLOR, DIVISION_ORDER } from "@/lib/graph-data";
 
-const COLUMN_WIDTH = 230;
-const ROW_HEIGHT = 76;
+// Top-down layout: one row per division (CLAUDE.md roster order), agents
+// laid out left-to-right within their row.
+const COL_GAP = 230; // horizontal pitch between node slots within a row
+const ROW_GAP = 130; // vertical pitch between division rows
 const NODE_WIDTH = 178;
 const NODE_HEIGHT = 54;
 const PADDING = 40;
-// Extra clearance above the first row so tall columns don't sit under the
+// Extra clearance above the first row so it doesn't sit under the
 // top-left legend / top-right caption overlays.
 const PADDING_TOP = 90;
 
@@ -38,6 +40,7 @@ export function AgentGraph({ roster }: { roster: RosterAgent[] }) {
   const [hovered, setHovered] = useState<string | null>(null);
   const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
   const panState = useRef({ dragging: false, startX: 0, startY: 0, ox: 0, oy: 0 });
+  const autoFitDone = useRef(false);
 
   useEffect(() => {
     api
@@ -46,34 +49,69 @@ export function AgentGraph({ roster }: { roster: RosterAgent[] }) {
       .catch(() => setEdges([]));
   }, []);
 
-  // Structured pipeline layout: one column per division (CLAUDE.md roster
-  // order), agents stacked vertically within their column, centered so
-  // small divisions (e.g. one-agent Manufacturing) don't hug the top.
+  // Structured pipeline layout: one row per division (CLAUDE.md roster
+  // order), agents laid out left-to-right within their row, centered so
+  // small divisions (e.g. one-agent Manufacturing) don't hug the left edge.
   const nodes: LayoutNode[] = useMemo(() => {
     const byDivision = new Map<string, RosterAgent[]>();
     roster.forEach((a) => {
       if (!byDivision.has(a.division)) byDivision.set(a.division, []);
       byDivision.get(a.division)!.push(a);
     });
-    const maxRows = Math.max(1, ...Array.from(byDivision.values()).map((v) => v.length));
-    const columnHeight = maxRows * ROW_HEIGHT;
+    const maxCols = Math.max(1, ...Array.from(byDivision.values()).map((v) => v.length));
+    const rowWidth = maxCols * COL_GAP;
 
     const out: LayoutNode[] = [];
-    DIVISION_ORDER.forEach((division, colIndex) => {
+    DIVISION_ORDER.forEach((division, rowIndex) => {
       const agents = byDivision.get(division) ?? [];
-      const startY = PADDING_TOP + (columnHeight - agents.length * ROW_HEIGHT) / 2;
-      agents.forEach((agent, rowIndex) => {
+      const startX = PADDING + (rowWidth - agents.length * COL_GAP) / 2;
+      agents.forEach((agent, colIndex) => {
         out.push({
           name: agent.name,
           division,
-          x: PADDING + colIndex * COLUMN_WIDTH,
-          y: startY + rowIndex * ROW_HEIGHT,
+          x: startX + colIndex * COL_GAP,
+          y: PADDING_TOP + rowIndex * ROW_GAP,
           agent,
         });
       });
     });
     return out;
   }, [roster]);
+
+  // Top-down layout is taller than it is wide (up to 8 division rows), so
+  // it won't fit the wide-but-short container at scale 1 the way the old
+  // left-right layout did. Fit the whole real graph into view once, on
+  // load — never overrides a pan/zoom the user did afterward. Waits for a
+  // real, non-zero container size via ResizeObserver rather than measuring
+  // on mount: a plain getBoundingClientRect() in the first effect tick can
+  // catch the container mid-layout (e.g. width still 0, height still at its
+  // min-h fallback), which silently produced scale(0) — an invisible graph.
+  useEffect(() => {
+    if (autoFitDone.current || nodes.length === 0 || !containerRef.current) return;
+    const el = containerRef.current;
+    const fit = (rect: { width: number; height: number }) => {
+      if (autoFitDone.current || rect.width === 0 || rect.height === 0) return;
+      const minX = Math.min(...nodes.map((n) => n.x));
+      const maxX = Math.max(...nodes.map((n) => n.x + NODE_WIDTH));
+      const minY = Math.min(...nodes.map((n) => n.y));
+      const maxY = Math.max(...nodes.map((n) => n.y + NODE_HEIGHT));
+      const contentW = maxX - minX + PADDING * 2;
+      const contentH = maxY - minY + PADDING * 2;
+      const k = Math.min(rect.width / contentW, rect.height / contentH, 1);
+      const tx = (rect.width - contentW * k) / 2 - minX * k + PADDING * k;
+      const ty = (rect.height - contentH * k) / 2 - minY * k + PADDING * k;
+      setTransform({ x: tx, y: ty, k });
+      autoFitDone.current = true;
+    };
+    const initial = el.getBoundingClientRect();
+    if (initial.width > 0 && initial.height > 0) {
+      fit(initial);
+      return;
+    }
+    const observer = new ResizeObserver(([entry]) => fit(entry.contentRect));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [nodes]);
 
   const nodeByName = useMemo(() => {
     const m = new Map<string, LayoutNode>();
@@ -114,15 +152,15 @@ export function AgentGraph({ roster }: { roster: RosterAgent[] }) {
   };
 
   function edgePath(source: LayoutNode, target: LayoutNode): string {
-    const sx = source.x + NODE_WIDTH;
-    const sy = source.y + NODE_HEIGHT / 2;
-    const tx = target.x;
-    const ty = target.y + NODE_HEIGHT / 2;
-    const dx = tx - sx;
-    // Backward/same-column edges (dx small or negative) bow outward instead
+    const sx = source.x + NODE_WIDTH / 2;
+    const sy = source.y + NODE_HEIGHT;
+    const tx = target.x + NODE_WIDTH / 2;
+    const ty = target.y;
+    const dy = ty - sy;
+    // Backward/same-row edges (dy small or negative) bow outward instead
     // of collapsing into a line straight through other nodes.
-    const bow = Math.max(60, Math.abs(dx) * 0.5);
-    return `M ${sx} ${sy} C ${sx + bow} ${sy}, ${tx - bow} ${ty}, ${tx} ${ty}`;
+    const bow = Math.max(60, Math.abs(dy) * 0.5);
+    return `M ${sx} ${sy} C ${sx} ${sy + bow}, ${tx} ${ty - bow}, ${tx} ${ty}`;
   }
 
   return (
